@@ -1,0 +1,140 @@
+# Spec §1.2, §4.1 — 거장 15명 명단
+# CIK는 10자리 zero-padded. null이면 resolve_cik이 첫 실행 시 해석.
+
+# === 가치/품질 (7) ===
+- name: "Warren Buffett"
+  label: "Buffett"
+  cik: "0001067983"
+  fund: "Berkshire Hathaway"
+  style: "value"
+  active_since: 1996
+  notes: "13F 추종 원조"
+  cloning_score_weight: 1.0
+
+- name: "Seth Klarman"
+  label: "Klarman"
+  cik: "0001061165"
+  fund: "Baupost Group"
+  style: "value"
+  active_since: 2000
+  notes: "디스트레스/가치, 매우 신중한 매수"
+  cloning_score_weight: 1.0
+
+- name: "Charles Akre"
+  label: "Akre"
+  cik: "0001112520"
+  fund: "Akre Capital Management"
+  style: "value"
+  active_since: 2009
+  notes: "퀄리티 컴파운더, 20여 종목 집중"
+  cloning_score_weight: 1.0
+
+- name: "Li Lu"
+  label: "LiLu"
+  cik: "0001709323"
+  fund: "Himalaya Capital Management"
+  style: "value"
+  active_since: 2017
+  notes: "Munger 추천, 동아시아+US"
+  cloning_score_weight: 1.0
+
+- name: "Mohnish Pabrai"
+  label: "Pabrai"
+  cik: "0001173334"
+  fund: "Dalal Street LLC"
+  style: "value"
+  active_since: 2002
+  notes: "Buffett 추종, 10여 종목"
+  cloning_score_weight: 1.0
+
+- name: "Joel Greenblatt"
+  label: "Greenblatt"
+  cik: "0001079114"
+  fund: "Gotham Asset Management"
+  style: "value"
+  active_since: 2008
+  notes: "Magic Formula, 다종목"
+  cloning_score_weight: 0.8
+
+- name: "William Nygren"
+  label: "Nygren"
+  cik: null  # resolve_cik이 해석 (Harris Associates / Oakmark)
+  fund: "Harris Associates"
+  style: "value"
+  active_since: 2011
+  notes: "Oakmark 대형주 가치"
+  cloning_score_weight: 0.9
+
+# === 액티비스트/이벤트 (4) ===
+- name: "Bill Ackman"
+  label: "Ackman"
+  cik: "0001336528"
+  fund: "Pershing Square Capital Management"
+  style: "activist"
+  active_since: 2004
+  notes: "8~10 종목 초집중"
+  cloning_score_weight: 1.0
+
+- name: "Daniel Loeb"
+  label: "Loeb"
+  cik: "0001040273"
+  fund: "Third Point LLC"
+  style: "activist"
+  active_since: 2011
+  notes: "액티비스트 + 이벤트"
+  cloning_score_weight: 0.9
+
+- name: "David Einhorn"
+  label: "Einhorn"
+  cik: null  # resolve_cik이 첫 실행 시 해석 (Greenlight Capital)
+  fund: "Greenlight Capital"
+  style: "activist"
+  active_since: 2004
+  notes: "롱숏 가치 (13F는 롱사이드만)"
+  cloning_score_weight: 0.9
+
+- name: "Carl Icahn"
+  label: "Icahn"
+  cik: "0000921669"
+  fund: "Icahn Capital LP"
+  style: "activist"
+  active_since: 1995
+  notes: "클래식 액티비스트"
+  cloning_score_weight: 0.8
+
+# === 매크로/컨트래리언 (4) ===
+- name: "David Tepper"
+  label: "Tepper"
+  cik: "0001656456"
+  fund: "Appaloosa Management"
+  style: "macro"
+  active_since: 2011
+  notes: "매크로/디스트레스, 변동 큼"
+  cloning_score_weight: 0.9
+
+- name: "Stanley Druckenmiller"
+  label: "Druckenmiller"
+  cik: "0001536411"
+  fund: "Duquesne Family Office"
+  style: "macro"
+  active_since: 2011
+  notes: "매크로 거장 (패밀리오피스도 13F 의무)"
+  cloning_score_weight: 1.0
+
+- name: "Michael Burry"
+  label: "Burry"
+  cik: "0001649339"
+  fund: "Scion Asset Management"
+  style: "macro"
+  active_since: 2013
+  notes: "컨트래리언, 옵션/숏 비중 높아 13F는 일부만"
+  cloning_score_weight: 0.6
+
+- name: "Ray Dalio"
+  label: "Dalio"
+  cik: "0001350694"
+  fund: "Bridgewater Associates"
+  style: "macro"
+  active_since: 2011
+  notes: "ETF 비중 높음 — 매크로 시그널 위주 해석"
+  cloning_score_weight: 0.5
