@@ -1,0 +1,7 @@
+# Spec §6.1 종합 점수 가중치
+# ⚠️ weights 합 = 1.0 (config.load 시 abs(sum - 1.0) < 0.01 검증)
+[weights]
+consensus = 0.30
+conviction = 0.30
+continuity = 0.20
+cloning_quality = 0.20

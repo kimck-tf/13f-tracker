@@ -1,0 +1,12 @@
+# 분석 시그널 threshold (Spec §6.1)
+[diff]
+# 주식 수 변화율 threshold (Δ% < threshold면 hold)
+hold_threshold = 0.05
+
+[continuity]
+# 직전 N분기 카운트 윈도우
+window_quarters = 4
+
+[consensus]
+# 컨센서스 종목으로 간주할 최소 보유 거장 수 (분석/대시보드 default)
+default_min_holders = 3
