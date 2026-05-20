@@ -1,0 +1,117 @@
+"""CUSIP → ticker mapping via OpenFIGI with DuckDB cache. Spec §5.1-1e."""
+from __future__ import annotations
+
+import logging
+import time
+from typing import Any
+
+import duckdb
+import httpx
+
+logger = logging.getLogger(__name__)
+
+OPENFIGI_URL = "https://api.openfigi.com/v3/mapping"
+OPENFIGI_BATCH_SIZE = 100
+OPENFIGI_RATE_LIMIT_SEC = 60.0 / 25.0  # 키 없을 때 25/min
+OPENFIGI_RATE_LIMIT_SEC_AUTHED = 60.0 / 250.0  # 키 있을 때 250/min
+
+
+def fetch_cache(
+    conn: duckdb.DuckDBPyConnection, cusips: list[str]
+) -> dict[str, dict[str, Any]]:
+    if not cusips:
+        return {}
+    placeholders = ",".join("?" for _ in cusips)
+    rows = conn.execute(
+        f"SELECT cusip, ticker, figi, name, is_etf FROM cusip_ticker_map "
+        f"WHERE cusip IN ({placeholders})",
+        cusips,
+    ).fetchall()
+    return {
+        r[0]: {"cusip": r[0], "ticker": r[1], "figi": r[2], "name": r[3], "is_etf": r[4]}
+        for r in rows
+    }
+
+
+def upsert_mapping(
+    conn: duckdb.DuckDBPyConnection, mappings: list[dict[str, Any]]
+) -> None:
+    if not mappings:
+        return
+    conn.executemany(
+        """
+        INSERT INTO cusip_ticker_map (cusip, ticker, figi, name, is_etf)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (cusip) DO UPDATE SET
+            ticker=excluded.ticker,
+            figi=excluded.figi,
+            name=excluded.name,
+            is_etf=excluded.is_etf,
+            updated_at=now()
+        """,
+        [
+            (m["cusip"], m.get("ticker"), m.get("figi"), m.get("name"), m.get("is_etf"))
+            for m in mappings
+        ],
+    )
+
+
+def _openfigi_batch(
+    cusips: list[str], api_key: str | None
+) -> list[dict[str, Any]]:
+    """Call OpenFIGI /v3/mapping for a batch of CUSIPs."""
+    headers = {"Content-Type": "text/json"}
+    if api_key:
+        headers["X-OPENFIGI-APIKEY"] = api_key
+    payload = [{"idType": "ID_CUSIP", "idValue": c} for c in cusips]
+    with httpx.Client(timeout=30.0) as client:
+        resp = client.post(OPENFIGI_URL, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+
+    out: list[dict[str, Any]] = []
+    for cusip, entry in zip(cusips, data):
+        if "data" not in entry or not entry["data"]:
+            out.append(
+                {"cusip": cusip, "ticker": None, "figi": None, "name": None, "is_etf": False}
+            )
+            continue
+        first = entry["data"][0]
+        sec_type = (first.get("securityType") or first.get("securityType2") or "").lower()
+        is_etf = "etf" in sec_type or "etp" in sec_type
+        out.append(
+            {
+                "cusip": cusip,
+                "ticker": first.get("ticker"),
+                "figi": first.get("figi"),
+                "name": first.get("name"),
+                "is_etf": is_etf,
+            }
+        )
+    return out
+
+
+def fill_missing(
+    conn: duckdb.DuckDBPyConnection,
+    cusips: list[str],
+    api_key: str | None = None,
+) -> int:
+    """캐시 미스인 CUSIP만 OpenFIGI 호출. 적재된 매핑 수 반환."""
+    unique = sorted(set(cusips))
+    cached = fetch_cache(conn, unique)
+    misses = [c for c in unique if c not in cached]
+    if not misses:
+        logger.info("CUSIP mapping: all %d CUSIPs cached, no API calls.", len(unique))
+        return 0
+
+    logger.info("CUSIP mapping: %d misses, calling OpenFIGI…", len(misses))
+    interval = OPENFIGI_RATE_LIMIT_SEC_AUTHED if api_key else OPENFIGI_RATE_LIMIT_SEC
+    inserted = 0
+    for i in range(0, len(misses), OPENFIGI_BATCH_SIZE):
+        batch = misses[i : i + OPENFIGI_BATCH_SIZE]
+        results = _openfigi_batch(batch, api_key)
+        upsert_mapping(conn, results)
+        inserted += len(results)
+        if i + OPENFIGI_BATCH_SIZE < len(misses):
+            time.sleep(interval)
+    return inserted
