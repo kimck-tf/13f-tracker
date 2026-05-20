@@ -83,3 +83,34 @@ class EdgarClient:
 
     def get_company_tickers(self) -> dict[str, Any]:
         return self._get(COMPANY_TICKERS_URL).json()
+
+
+from datetime import date
+
+
+def extract_13f_filings(submissions: dict[str, Any]) -> list[dict[str, Any]]:
+    """submissions JSON에서 13F-HR / 13F-HR/A 만 추출.
+
+    Spec §5.1-1c: 13F-NT는 보유내역이 없으므로 제외.
+    `filings.files` 페이지네이션은 별도 단계로 분리 (이 함수는 recent만).
+    """
+    recent = submissions.get("filings", {}).get("recent", {})
+    accs = recent.get("accessionNumber", [])
+    forms = recent.get("form", [])
+    filed = recent.get("filingDate", [])
+    report = recent.get("reportDate", [])
+
+    out: list[dict[str, Any]] = []
+    for acc, form, fd, rd in zip(accs, forms, filed, report):
+        if form not in ("13F-HR", "13F-HR/A"):
+            continue
+        out.append(
+            {
+                "accession_no": acc,
+                "form_type": form,
+                "period_of_report": date.fromisoformat(rd),
+                "filed_at": date.fromisoformat(fd),
+                "is_amendment": form.endswith("/A"),
+            }
+        )
+    return out
