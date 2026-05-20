@@ -7,9 +7,29 @@ app = typer.Typer(no_args_is_help=True, help="13F portfolio tracker CLI")
 
 
 @app.command()
-def collect() -> None:
+def collect(
+    start: str = typer.Option("2011Q1", help="시작 분기 (예: 2011Q1)"),
+) -> None:
     """Phase 1: EDGAR 수집 + 가격 다운로드."""
-    typer.echo("collect: not implemented yet (Phase 1)")
+    from pathlib import Path
+
+    from thirteen_f.collect.pipeline import run_collect
+    from thirteen_f.core.config import load_settings
+    from thirteen_f.core.dates import quarter_start
+    from thirteen_f.core.logging import get_logger
+
+    settings = load_settings()
+    log = get_logger(log_dir=Path("data/logs"))
+    log.info("Phase 1 collect start (start=%s)", start)
+    stats = run_collect(
+        settings=settings,
+        managers_yaml=Path("config/managers.yaml"),
+        db_path=settings.duckdb_path,
+        start_date=quarter_start(start),
+        failure_log=Path("data/logs/failed_tickers.jsonl"),
+    )
+    log.info("collect done: %s", stats)
+    typer.echo(f"OK: {stats}")
 
 
 @app.command()
