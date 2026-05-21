@@ -7,7 +7,7 @@
 - [x] **Phase 0** — uv 환경, DuckDB 11 테이블, CLI scaffolding (74 unit tests)
 - [x] **Phase 1** — EDGAR 수집 파이프라인 (15명 / 110 filings / 10,867 holdings / 1,584 price tickers)
 - [x] **Phase 2** — 4 시그널(diff/conviction/continuity/consensus) + 종합 점수 (10,759 signals / 8,785 total_scores)
-- [ ] **Phase 3** — 다중 전략 백테스트 엔진 (Strategy ABC + 6 전략 + Lookahead 가드 + Engine)
+- [x] **Phase 3** — Strategy ABC + 6 전략 + Lookahead 가드 + Engine + Runner (104 unit tests, 가용 데이터 기준 17개월 백테스트 검증)
 - [ ] **Phase 4** — Streamlit 대시보드 + Quarto 분기 리포트 (Gemini LLM 보조)
 
 ## Reference Triggers
@@ -27,11 +27,12 @@ Python ≥3.11 (uv) / httpx / lxml / duckdb / polars / pyyaml / typer / yfinance
 ```bash
 uv run thirteen-f collect --start 2024Q1    # Phase 1: EDGAR + parser + CUSIP + prices
 uv run thirteen-f analyze                   # Phase 2: signals + score
-uv run thirteen-f backtest --all            # Phase 3 (TODO)
+uv run thirteen-f backtest --all --start 2024-01-02   # Phase 3: 6 전략 백테스트 (CAGR/MDD/Sharpe 출력)
+uv run thirteen-f backtest --strategy ScoreTopK --start 2024-01-02
 uv run thirteen-f dashboard                 # Phase 4 (TODO)
 uv run thirteen-f report --latest --open    # Phase 4 (TODO)
 
-uv run pytest tests/unit -q                 # 74 passed
+uv run pytest tests/unit -q                 # 104 passed
 uv run python scripts/supplement.py         # one-off: slash normalize + missing prices
 ```
 
@@ -59,7 +60,8 @@ uv run python scripts/supplement.py         # one-off: slash normalize + missing
 
 - **OpenFIGI 매핑률 87.3%** — 외국 거래소·warrants·private securities 제외 후 의도된 수치 (DoD 90% 미달이지만 backtest 의미 충족)
 - **가격 누락 13 ticker** — AKRO, AMED, CADE, CDTX, CIVI, CMA, DNB, HES, PCH, WBA (delisted/merged) + FLYX-WS/NPWR-WS/OXY-WS (warrants). backtest 시 해당 종목만 skip
-- **Buffett "No info table XML"** — 일부 13F-HR이 Confidential Treatment 또는 13F-NT 형태로 보고된 정상 경고
+- **Buffett "No info table XML"** — 일부 13F-HR이 Confidential Treatment 또는 13F-NT 형태로 보고된 정상 경고. 결과적으로 `SingleManagerClone(Buffett)` 백테스트는 가용 holdings가 거의 없어 NAV 변동 ≈ 0 (코드 버그 아닌 데이터 한계)
+- **백테스트 가용 범위** — 가격 데이터가 2024-01-02부터라 plan 예시 `--start 2015-01-01`은 자동으로 2024-01-02부터 수행됨 (SPY 영업일 기준)
 - **Nygren CIK** — `company_tickers.json`에 ticker 없는 13F-only filer라 resolve_cik 실패. yaml에 직접 `0000813917` 입력 (Harris Associates L P)
 - **pandas-datareader 0.10** — pandas 3.0과 비호환. Stooq는 httpx 직접 호출로 교체됨
 

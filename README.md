@@ -61,10 +61,10 @@ print(c.execute('''
 - [x] Phase 0 — 환경 셋업, DuckDB 11 테이블, CLI scaffolding
 - [x] Phase 1 — EDGAR 수집 (15명 / 110 filings / 10,867 holdings / 1,584 price tickers)
 - [x] Phase 2 — 4 시그널 + 종합 점수 (10,759 signals / 8,785 total_scores)
-- [ ] Phase 3 — 다중 전략 백테스트 엔진
+- [x] Phase 3 — Strategy ABC + 6 전략 + Lookahead 가드 + Engine + Runner
 - [ ] Phase 4 — Streamlit 대시보드 + Quarto 분기 리포트
 
-74 unit tests passed.
+104 unit tests passed.
 
 ## CLI Commands
 
@@ -72,7 +72,7 @@ print(c.execute('''
 |---|---|---|
 | `thirteen-f collect [--start QUARTER]` | 1 | done |
 | `thirteen-f analyze [--threshold FLOAT]` | 2 | done |
-| `thirteen-f backtest [--strategy NAME / --all]` | 3 | todo |
+| `thirteen-f backtest [--strategy NAME / --all] [--start --end --cost-bps]` | 3 | done |
 | `thirteen-f dashboard` | 4 | todo |
 | `thirteen-f report [--quarter Q / --latest] [--open]` | 4 | todo |
 | `thirteen-f update` | all | todo |
