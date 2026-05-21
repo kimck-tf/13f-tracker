@@ -11,7 +11,9 @@ import httpx
 logger = logging.getLogger(__name__)
 
 OPENFIGI_URL = "https://api.openfigi.com/v3/mapping"
-OPENFIGI_BATCH_SIZE = 100
+# OpenFIGI v3 batch 한도: 무인증 10 jobs/batch, 인증 100 jobs/batch (초과 시 413 Payload Too Large)
+OPENFIGI_BATCH_SIZE_UNAUTHED = 10
+OPENFIGI_BATCH_SIZE_AUTHED = 100
 OPENFIGI_RATE_LIMIT_SEC = 60.0 / 25.0  # 키 없을 때 25/min
 OPENFIGI_RATE_LIMIT_SEC_AUTHED = 60.0 / 250.0  # 키 있을 때 250/min
 
@@ -106,12 +108,13 @@ def fill_missing(
 
     logger.info("CUSIP mapping: %d misses, calling OpenFIGI…", len(misses))
     interval = OPENFIGI_RATE_LIMIT_SEC_AUTHED if api_key else OPENFIGI_RATE_LIMIT_SEC
+    batch_size = OPENFIGI_BATCH_SIZE_AUTHED if api_key else OPENFIGI_BATCH_SIZE_UNAUTHED
     inserted = 0
-    for i in range(0, len(misses), OPENFIGI_BATCH_SIZE):
-        batch = misses[i : i + OPENFIGI_BATCH_SIZE]
+    for i in range(0, len(misses), batch_size):
+        batch = misses[i : i + batch_size]
         results = _openfigi_batch(batch, api_key)
         upsert_mapping(conn, results)
         inserted += len(results)
-        if i + OPENFIGI_BATCH_SIZE < len(misses):
+        if i + batch_size < len(misses):
             time.sleep(interval)
     return inserted
