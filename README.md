@@ -66,6 +66,31 @@ print(c.execute('''
 
 104 unit tests passed.
 
+## Phase 3 Backtest Snapshot (2024-01-02 ~ 2026-05-20, cost_bps=10)
+
+| 전략 | CAGR | MDD | Sharpe |
+|---|--:|--:|--:|
+| SingleManagerClone(Buffett) | 0.00% | 0.00% | 0.00 |
+| ConsensusTopK(3, 20) | 14.87% | 21.30% | 0.87 |
+| ScoreTopK(20) | 24.46% | 17.40% | 1.37 |
+| ConvictionFollow(10) | 16.10% | 19.06% | 1.00 |
+| NewBuyOnly(2, 15) | 39.74% | 28.14% | 1.35 |
+| Ensemble(Buffett 0.4 / ScoreTopK 0.4 / ConsensusTopK 0.2) | 19.41% | 17.79% | 1.16 |
+
+### ⚠️ 해석 주의사항
+
+1. **`SingleManagerClone(Buffett)` CAGR 0%는 코드 버그가 아니라 데이터 한계**
+   Buffett(BRK)의 10개 filing 중 9개가 Confidential Treatment로 information table XML이 비어 있고, 36건이 든 1개는 정정본 supersede로 가려져 가용 holdings가 거의 없음. → SEC EDGAR 본문 자체의 한계이며 다른 거장 라벨로 같은 전략을 돌리면 정상 작동.
+
+2. **`NewBuyOnly` CAGR 39.74% 는 과대 노출 가능성**
+   17개월 짧은 표본에서 small-cap 신규매수 consensus rotation 효과가 부풀려졌을 수 있음. 편도 10bp 거래비용 가정도 단순하고 slippage·세금·차입 제한 미반영. → 더 긴 기간 데이터가 쌓이면 재검증 필요.
+
+3. **백테스트 가용 시작일은 2024-01-02** (SPY 가격 데이터 시작점)
+   `--start 2015-01-01` 같은 더 이른 날짜를 줘도 엔진은 SPY 영업일 기준으로 자동 절삭함. 따라서 현재까지의 결과는 17개월 short-cycle 검증이지 long-cycle 검증 아님.
+
+4. **Lookahead bias 차단은 검증됨** (Spec §7.4)
+   5개 전략 × 미래 filing 노출 6 케이스 단위 테스트로 확인. `filings.filed_at <= as_of_date` 가드는 모든 전략 SQL에 강제됨.
+
 ## CLI Commands
 
 | Command | Phase | Status |

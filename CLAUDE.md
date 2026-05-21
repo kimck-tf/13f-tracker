@@ -61,7 +61,8 @@ uv run python scripts/supplement.py         # one-off: slash normalize + missing
 - **OpenFIGI 매핑률 87.3%** — 외국 거래소·warrants·private securities 제외 후 의도된 수치 (DoD 90% 미달이지만 backtest 의미 충족)
 - **가격 누락 13 ticker** — AKRO, AMED, CADE, CDTX, CIVI, CMA, DNB, HES, PCH, WBA (delisted/merged) + FLYX-WS/NPWR-WS/OXY-WS (warrants). backtest 시 해당 종목만 skip
 - **Buffett "No info table XML"** — 일부 13F-HR이 Confidential Treatment 또는 13F-NT 형태로 보고된 정상 경고. 결과적으로 `SingleManagerClone(Buffett)` 백테스트는 가용 holdings가 거의 없어 NAV 변동 ≈ 0 (코드 버그 아닌 데이터 한계)
-- **백테스트 가용 범위** — 가격 데이터가 2024-01-02부터라 plan 예시 `--start 2015-01-01`은 자동으로 2024-01-02부터 수행됨 (SPY 영업일 기준)
+- **백테스트 가용 범위** — 가격 데이터가 2024-01-02부터라 plan 예시 `--start 2015-01-01`은 자동으로 2024-01-02부터 수행됨 (SPY 영업일 기준). 17개월(2024-01-02 ~ 2026-05-20)이라 long-cycle 검증 부족 — 데이터 더 쌓이면 재검증 필요
+- **NewBuyOnly CAGR 39.74%** — 17개월 백테스트에서 small-cap 신규매수 consensus rotation 효과로 과대 노출 가능성. 표본 기간 짧고 fee/slippage 가정 단순(편도 10bp)이라 실거래 재현성 ≠ 동일. 더 긴 기간·실제 비용 모델로 재검증 필요
 - **Nygren CIK** — `company_tickers.json`에 ticker 없는 13F-only filer라 resolve_cik 실패. yaml에 직접 `0000813917` 입력 (Harris Associates L P)
 - **pandas-datareader 0.10** — pandas 3.0과 비호환. Stooq는 httpx 직접 호출로 교체됨
 
