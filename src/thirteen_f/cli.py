@@ -127,8 +127,12 @@ def backtest(
 
 @app.command()
 def dashboard() -> None:
-    """Phase 4: Streamlit 대시보드."""
-    typer.echo("dashboard: not implemented yet (Phase 4)")
+    """Phase 4: Streamlit 대시보드 실행."""
+    import subprocess
+    from pathlib import Path
+
+    app_path = Path(__file__).parent / "dashboard" / "app.py"
+    subprocess.run(["streamlit", "run", str(app_path)], check=False)
 
 
 @app.command()
