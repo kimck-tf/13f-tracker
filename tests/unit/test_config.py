@@ -62,3 +62,50 @@ def test_settings_google_api_key_loaded(monkeypatch, tmp_path):
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     settings = load_settings()
     assert settings.google_api_key == "AIza-test-key"
+
+
+def test_settings_gemini_thinking_default_true(monkeypatch, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text('SEC_USER_AGENT="Test User test@example.com"\n')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GEMINI_THINKING", raising=False)
+    settings = load_settings()
+    assert settings.gemini_thinking is True
+
+
+def test_settings_gemini_thinking_false(monkeypatch, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        'SEC_USER_AGENT="Test User test@example.com"\n'
+        'GEMINI_THINKING="false"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GEMINI_THINKING", raising=False)
+    settings = load_settings()
+    assert settings.gemini_thinking is False
+
+
+def test_settings_gemini_thinking_truthy_variants(monkeypatch, tmp_path):
+    """'1', 'yes', 'on' 모두 True로 해석."""
+    for val in ("1", "yes", "on", "TRUE"):
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            f'SEC_USER_AGENT="Test User test@example.com"\nGEMINI_THINKING="{val}"\n'
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("GEMINI_THINKING", raising=False)
+        s = load_settings()
+        assert s.gemini_thinking is True, f"value '{val}' should parse as True"
+
+
+def test_settings_gemini_thinking_falsy_variants(monkeypatch, tmp_path):
+    """'0', 'no', 'off' 모두 False로 해석."""
+    for val in ("0", "no", "off", "FALSE"):
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            f'SEC_USER_AGENT="Test User test@example.com"\nGEMINI_THINKING="{val}"\n'
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("GEMINI_THINKING", raising=False)
+        s = load_settings()
+        assert s.gemini_thinking is False, f"value '{val}' should parse as False"

@@ -55,3 +55,31 @@ def test_concatenates_multiple_parts():
     }
     with patch("httpx.post", return_value=mock_resp):
         assert generate("test", api_key="fake-key") == "Hello world"
+
+
+def test_thinking_on_does_not_set_budget():
+    """enable_thinking=True (기본) → 페이로드에 thinkingConfig 미포함."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "candidates": [{"content": {"parts": [{"text": "ok"}]}}]
+    }
+    with patch("httpx.post", return_value=mock_resp) as m:
+        generate("test", api_key="k", enable_thinking=True)
+        kwargs = m.call_args.kwargs
+        gen_cfg = kwargs["json"]["generationConfig"]
+        assert "thinkingConfig" not in gen_cfg
+
+
+def test_thinking_off_sets_budget_zero():
+    """enable_thinking=False → thinkingConfig.thinkingBudget=0 으로 thinking 비활성화."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "candidates": [{"content": {"parts": [{"text": "ok"}]}}]
+    }
+    with patch("httpx.post", return_value=mock_resp) as m:
+        generate("test", api_key="k", enable_thinking=False)
+        kwargs = m.call_args.kwargs
+        gen_cfg = kwargs["json"]["generationConfig"]
+        assert gen_cfg.get("thinkingConfig") == {"thinkingBudget": 0}

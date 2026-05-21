@@ -85,8 +85,13 @@ def headline_summary(
     period: date,
     api_key: str,
     model: str = "gemini-2.5-flash",
+    enable_thinking: bool = True,
 ) -> str | None:
-    """분기 헤드라인 요약. API 키 없으면 None."""
+    """분기 헤드라인 요약. API 키 없으면 None.
+
+    thinking ON일 때 thinking 토큰이 응답 한도를 함께 쓰므로 max_output_tokens를
+    4096으로 충분히 잡는다. thinking OFF는 같은 한도로 응답이 더 빠르게 끝남.
+    """
     if not api_key:
         return None
     ctx = fetch_quarter_context(conn, period)
@@ -98,8 +103,10 @@ def headline_summary(
         change_counts=ctx["change_counts"],
         new_buy_top=ctx["new_buy_top"],
     )
-    # thinking 모델이면 thinking에 2~3k 토큰 소진하므로 응답 헤드라인 ~500 토큰을 위해 4096 권장
-    return generate(prompt, api_key=api_key, model=model, max_output_tokens=4096)
+    return generate(
+        prompt, api_key=api_key, model=model,
+        max_output_tokens=4096, enable_thinking=enable_thinking,
+    )
 
 
 def explain_top_signals(  # noqa: D401
@@ -108,13 +115,19 @@ def explain_top_signals(  # noqa: D401
     api_key: str,
     top_n: int = 10,
     model: str = "gemini-2.5-flash",
+    enable_thinking: bool = True,
 ) -> str | None:
-    """Top N 종목 시그널 해석. API 키 없으면 None."""
+    """Top N 종목 시그널 해석. API 키 없으면 None.
+
+    Top N 종목별 1-2문장 해석 → thinking ON 시 thinking ~1-2k + 응답 ~500 토큰 위해 8192.
+    """
     if not api_key:
         return None
     rows = fetch_top_signals(conn, period, top_n=top_n)
     if not rows:
         return None
     prompt = signal_explain_prompt(period=str(period), rows=rows)
-    # Top N 종목별 1-2문장 해석 → 응답 ~1~2k 토큰 + thinking 3~5k 토큰 여유 위해 8192
-    return generate(prompt, api_key=api_key, model=model, max_output_tokens=8192)
+    return generate(
+        prompt, api_key=api_key, model=model,
+        max_output_tokens=8192, enable_thinking=enable_thinking,
+    )

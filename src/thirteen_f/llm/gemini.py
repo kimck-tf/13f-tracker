@@ -22,12 +22,17 @@ def generate(
     temperature: float = 0.2,
     max_output_tokens: int = 8192,
     timeout: float = 60.0,
+    enable_thinking: bool = True,
 ) -> str | None:
     """Gemini generateContent 1회 호출. 키 없거나 실패 시 None.
 
-    `gemini-3-flash-preview` 같은 thinking 모델은 max_output_tokens를 thinking과
-    응답 텍스트가 함께 나눠 쓰므로, thinking을 살려둘 경우 한도를 충분히 크게
-    잡아야 답변이 잘리지 않는다. 기본 8192 — thinking 2~3k + 응답 1~2k 여유.
+    Args:
+        enable_thinking: thinking 모델(예: `gemini-3-flash-preview`)에 대한 toggle.
+            True(기본) — 모델 default thinking 사용 (응답 품질 ↑, 토큰·지연 ↑).
+            False — `thinkingConfig.thinkingBudget=0` 으로 thinking 비활성화 (지연·비용 ↓).
+            thinking 미지원 모델에는 양쪽 모두 무해.
+        max_output_tokens: thinking ON일 때 thinking+응답이 함께 나눠 쓰므로 한도를 크게
+            잡아야 답변이 잘리지 않는다. 기본 8192 — thinking 2~3k + 응답 1~2k 여유.
 
     Returns:
         모델 응답 텍스트 (한국어 prompt이면 한국어 출력). 실패 시 None.
@@ -35,12 +40,15 @@ def generate(
     if not api_key:
         return None
     url = f"{GEMINI_BASE_URL}/models/{model}:generateContent"
+    gen_cfg: dict[str, Any] = {
+        "temperature": temperature,
+        "maxOutputTokens": max_output_tokens,
+    }
+    if not enable_thinking:
+        gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
     payload: dict[str, Any] = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": temperature,
-            "maxOutputTokens": max_output_tokens,
-        },
+        "generationConfig": gen_cfg,
     }
     try:
         resp = httpx.post(

@@ -51,7 +51,10 @@ from thirteen_f.llm import headline_summary
 
 _settings = load_settings()
 _summary = headline_summary(
-    conn, period, api_key=_settings.google_api_key, model=_settings.google_model
+    conn, period,
+    api_key=_settings.google_api_key,
+    model=_settings.google_model,
+    enable_thinking=_settings.gemini_thinking,
 )
 if _summary:
     print(_summary)

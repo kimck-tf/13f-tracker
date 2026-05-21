@@ -31,8 +31,11 @@ from thirteen_f.llm import explain_top_signals
 
 _settings = load_settings()
 _explain = explain_top_signals(
-    conn, period, api_key=_settings.google_api_key,
-    top_n=10, model=_settings.google_model,
+    conn, period,
+    api_key=_settings.google_api_key,
+    top_n=10,
+    model=_settings.google_model,
+    enable_thinking=_settings.gemini_thinking,
 )
 if _explain:
     print(_explain)

@@ -57,6 +57,7 @@ uv run python scripts/supplement.py         # one-off: slash normalize + missing
 - `STOOQ_API_KEY` (선택): Stooq 2024+ 무인증 폐지 — 키 없으면 fallback skip
 - `DUCKDB_PATH` (기본 `data/13f.duckdb`)
 - `GOOGLE_API_KEY` + `GOOGLE_MODEL=gemini-3-flash-preview` (Phase 4 분기 리포트 자연어 요약 + 시그널 해석). 미설정 시 LLM 셀은 안내 placeholder만 표시
+- `GEMINI_THINKING=true|false` (기본 `true`): thinking 모델의 thinking 토글. `false` 시 `thinkingConfig.thinkingBudget=0` 강제 → 토큰·지연 ↓ 품질 미세 ↓. 실측: headline OFF 3.91s vs ON 7.44s
 
 ## Known Issues / Quirks
 
@@ -68,7 +69,7 @@ uv run python scripts/supplement.py         # one-off: slash normalize + missing
 - **Nygren CIK** — `company_tickers.json`에 ticker 없는 13F-only filer라 resolve_cik 실패. yaml에 직접 `0000813917` 입력 (Harris Associates L P)
 - **pandas-datareader 0.10** — pandas 3.0과 비호환. Stooq는 httpx 직접 호출로 교체됨
 - **Quarto CLI 시스템 의존성** — `uv run thirteen-f report`는 OS-level `quarto` 실행 파일 필요. Windows: `winget install RStudio.Quarto`. 미설치 시 명령은 안내 메시지 후 exit 2
-- **Gemini thinking 모델 토큰 한도** — `gemini-3-flash-preview` 같은 thinking 모델은 `max_output_tokens`를 thinking 토큰과 응답 토큰이 함께 나눠 쓴다. thinking을 살리려면 한도를 크게 잡아야 함. 현재 기본값 `llm/gemini.py:generate(max_output_tokens=8192)`, headline 호출 4096, explain 호출 8192. 실측: thinking 800~1700 + 응답 200~330 토큰 (모두 finishReason=STOP)
+- **Gemini thinking 모델 토큰 한도** — `gemini-3-flash-preview` 같은 thinking 모델은 `max_output_tokens`를 thinking 토큰과 응답 토큰이 함께 나눠 쓴다. thinking ON에서 한도를 크게 잡아야 답변이 잘리지 않음. 현재 `llm/gemini.py:generate(max_output_tokens=8192, enable_thinking=True)` 기본값. headline 호출 4096, explain 호출 8192. thinking on/off는 `.env`의 `GEMINI_THINKING` 또는 함수 인자 `enable_thinking`으로 제어
 
 ## Workflow Rules
 
