@@ -8,6 +8,7 @@ from thirteen_f.collect.cusip_mapper import (
     fetch_cache,
     upsert_mapping,
     fill_missing,
+    _pick_us_primary,
 )
 
 
@@ -43,6 +44,32 @@ def test_fill_missing_uses_cache_first(db_path):
         fill_missing(conn, ["037833100"], api_key=None)
         mock_api.assert_not_called()
     conn.close()
+
+
+def test_pick_us_primary_returns_us_when_mixed():
+    """외국 거래소가 먼저 와도 US primary를 우선 선택."""
+    data = [
+        {"exchCode": "GZ", "ticker": "016", "name": "VEREN INC"},
+        {"exchCode": "UN", "ticker": "AAPL", "name": "APPLE INC"},
+    ]
+    assert _pick_us_primary(data)["ticker"] == "AAPL"
+
+
+def test_pick_us_primary_none_when_no_us():
+    """외국 거래소만 있으면 None — ticker=None으로 두어 yfinance 호출 회피."""
+    data = [
+        {"exchCode": "GZ", "ticker": "016"},
+        {"exchCode": "XH", "ticker": "CPG2CAD"},
+        {"exchCode": "XF", "ticker": "CPG2CAD"},
+    ]
+    assert _pick_us_primary(data) is None
+
+
+def test_pick_us_primary_handles_nasdaq_codes():
+    """NASDAQ 변형 코드(UQ/UR/UP/UW) 모두 US로 인정."""
+    for code in ("UQ", "UR", "UP", "UW", "UA", "UF", "UV", "UD", "US"):
+        data = [{"exchCode": code, "ticker": "TEST"}]
+        assert _pick_us_primary(data) is not None, f"exchCode={code} should match"
 
 
 def test_fill_missing_calls_openfigi_for_misses(db_path):

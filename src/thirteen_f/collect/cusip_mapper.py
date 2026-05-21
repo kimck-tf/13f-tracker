@@ -17,6 +17,29 @@ OPENFIGI_BATCH_SIZE_AUTHED = 100
 OPENFIGI_RATE_LIMIT_SEC = 60.0 / 25.0  # 키 없을 때 25/min
 OPENFIGI_RATE_LIMIT_SEC_AUTHED = 60.0 / 250.0  # 키 있을 때 250/min
 
+# OpenFIGI exchCode 중 US primary listing 식별자. 그 외(GZ, XH, XF 등 외국·secondary)는
+# yfinance가 인식할 수 없으므로 ticker=None으로 둠 (CUSIP을 fallback 키로 사용).
+US_PRIMARY_EXCH_CODES = frozenset({
+    "US",  # 미국 composite
+    "UN",  # NYSE
+    "UQ",  # NASDAQ GS
+    "UR",  # NASDAQ GM
+    "UP",  # NASDAQ CM
+    "UW",  # NASDAQ Capital
+    "UA",  # NYSE American (AMEX)
+    "UF",  # NYSE Arca
+    "UV",  # OTC US
+    "UD",  # OTC BB
+})
+
+
+def _pick_us_primary(data: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """OpenFIGI data[] 중 US primary 거래소 첫 항목 선택. 없으면 None."""
+    for item in data:
+        if item.get("exchCode") in US_PRIMARY_EXCH_CODES:
+            return item
+    return None
+
 
 def fetch_cache(
     conn: duckdb.DuckDBPyConnection, cusips: list[str]
@@ -78,15 +101,28 @@ def _openfigi_batch(
                 {"cusip": cusip, "ticker": None, "figi": None, "name": None, "is_etf": False}
             )
             continue
-        first = entry["data"][0]
-        sec_type = (first.get("securityType") or first.get("securityType2") or "").lower()
+        items = entry["data"]
+        us = _pick_us_primary(items)
+        if us is None:
+            # 외국 거래소·secondary listing뿐 — ticker None으로 두고 figi/name은 first
+            # item에서 (compositeFIGI 우선) 가져와 식별 정보는 유지.
+            first = items[0]
+            out.append({
+                "cusip": cusip,
+                "ticker": None,
+                "figi": first.get("compositeFIGI") or first.get("figi"),
+                "name": first.get("name"),
+                "is_etf": False,
+            })
+            continue
+        sec_type = (us.get("securityType") or us.get("securityType2") or "").lower()
         is_etf = "etf" in sec_type or "etp" in sec_type
         out.append(
             {
                 "cusip": cusip,
-                "ticker": first.get("ticker"),
-                "figi": first.get("figi"),
-                "name": first.get("name"),
+                "ticker": us.get("ticker"),
+                "figi": us.get("compositeFIGI") or us.get("figi"),
+                "name": us.get("name"),
                 "is_etf": is_etf,
             }
         )
