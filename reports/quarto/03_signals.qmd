@@ -20,3 +20,24 @@ conn.execute(
     (period,),
 ).fetchdf()
 ```
+
+## Top 10 시그널 해석 (LLM 자동 생성)
+
+```{python}
+#| echo: false
+#| output: asis
+from thirteen_f.core.config import load_settings
+from thirteen_f.llm import explain_top_signals
+
+_settings = load_settings()
+_explain = explain_top_signals(
+    conn, period, api_key=_settings.google_api_key,
+    top_n=10, model=_settings.google_model,
+)
+if _explain:
+    print(_explain)
+else:
+    print(
+        "_시그널 해석 비활성화 (`.env`에 `GOOGLE_API_KEY` 설정 시 자동 활성화)._"
+    )
+```

@@ -40,3 +40,24 @@ top5
 
 > 본 리포트의 시그널은 13F 데이터의 구조적 한계(45일 지연·롱 온리·분기 스냅샷·기밀 처리)를 전제로 합니다.
 > 모든 결과는 참고용이며 투자 권유가 아닙니다.
+
+## 분기 헤드라인 요약 (LLM 자동 생성)
+
+```{python}
+#| echo: false
+#| output: asis
+from thirteen_f.core.config import load_settings
+from thirteen_f.llm import headline_summary
+
+_settings = load_settings()
+_summary = headline_summary(
+    conn, period, api_key=_settings.google_api_key, model=_settings.google_model
+)
+if _summary:
+    print(_summary)
+else:
+    print(
+        "_LLM 요약 비활성화 (`.env`에 `GOOGLE_API_KEY` 설정 시 자동 활성화). "
+        "현재 모델: `" + _settings.google_model + "`._"
+    )
+```
