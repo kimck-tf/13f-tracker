@@ -42,15 +42,35 @@ def _yfinance_download(ticker: str, start: date) -> pd.DataFrame | None:
 
 
 def _stooq_download(ticker: str, start: date) -> pd.DataFrame | None:
+    """Stooq CSV 직접 fetch. STOOQ_API_KEY 환경변수 필요 (2024년 이후 무인증 폐지).
+    키 없으면 즉시 None 반환 — 시끄러운 로그·시간낭비 회피.
+
+    키 발급: https://stooq.com/q/d/?s=AAPL.US&get_apikey 에서 captcha 입력 후 발급.
+    """
+    import os
+    api_key = os.environ.get("STOOQ_API_KEY", "").strip().strip('"')
+    if not api_key:
+        return None
     try:
-        from pandas_datareader import data as pdr
+        import httpx
+        from io import StringIO
 
         stooq_t = to_stooq_ticker(ticker)
-        df = pdr.DataReader(stooq_t, "stooq", start=start)
-        if df is None or df.empty:
+        url = (
+            f"https://stooq.com/q/d/l/?s={stooq_t}"
+            f"&d1={start.strftime('%Y%m%d')}&i=d&apikey={api_key}"
+        )
+        resp = httpx.get(url, timeout=30.0)
+        resp.raise_for_status()
+        text = resp.text.strip()
+        if not text or text.lower().startswith("no data") or "\n" not in text:
             return None
-        # stooq returns descending; flip
-        df = df.sort_index()
+        df = pd.read_csv(StringIO(text))
+        if df.empty or "Date" not in df.columns:
+            return None
+        df["Date"] = pd.to_datetime(df["Date"])
+        df = df.set_index("Date").sort_index()
+        df["Adj Close"] = df["Close"]
         return df
     except Exception as e:
         logger.warning("Stooq failed for %s: %s", ticker, e)
