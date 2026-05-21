@@ -9,6 +9,7 @@
 - [x] **Phase 2** — 4 시그널(diff/conviction/continuity/consensus) + 종합 점수 (10,759 signals / 8,785 total_scores)
 - [x] **Phase 3** — Strategy ABC + 6 전략 + Lookahead 가드 + Engine + Runner (104 unit tests, 가용 데이터 기준 17개월 백테스트 검증)
 - [x] **Phase 4** — Streamlit 5 페이지 + Quarto 6 챕터 + dashboard/report/update CLI (Streamlit 부팅 health=200 확인; Quarto는 사용자 환경 CLI 설치 후 검증)
+- [x] **Phase 4+** — Gemini LLM 통합 (분기 헤드라인 요약 + Top 10 시그널 해석). API 키 없으면 graceful skip
 
 ## Reference Triggers
 
@@ -55,7 +56,7 @@ uv run python scripts/supplement.py         # one-off: slash normalize + missing
 - `OPENFIGI_API_KEY` (선택): 무인증 25/min, 인증 250/min
 - `STOOQ_API_KEY` (선택): Stooq 2024+ 무인증 폐지 — 키 없으면 fallback skip
 - `DUCKDB_PATH` (기본 `data/13f.duckdb`)
-- `GOOGLE_API_KEY` + `GOOGLE_MODEL=gemini-3-flash-preview` (Phase 4 분기 리포트 자연어 요약 + 시그널 해석)
+- `GOOGLE_API_KEY` + `GOOGLE_MODEL=gemini-3-flash-preview` (Phase 4 분기 리포트 자연어 요약 + 시그널 해석). 미설정 시 LLM 셀은 안내 placeholder만 표시
 
 ## Known Issues / Quirks
 
@@ -67,6 +68,7 @@ uv run python scripts/supplement.py         # one-off: slash normalize + missing
 - **Nygren CIK** — `company_tickers.json`에 ticker 없는 13F-only filer라 resolve_cik 실패. yaml에 직접 `0000813917` 입력 (Harris Associates L P)
 - **pandas-datareader 0.10** — pandas 3.0과 비호환. Stooq는 httpx 직접 호출로 교체됨
 - **Quarto CLI 시스템 의존성** — `uv run thirteen-f report`는 OS-level `quarto` 실행 파일 필요. Windows: `winget install RStudio.Quarto`. 미설치 시 명령은 안내 메시지 후 exit 2
+- **Gemini thinking 모델 토큰 소진** — `gemini-3-flash-preview` 같은 thinking 모델은 `max_output_tokens` 한도를 thinking에 먼저 소모해 응답 텍스트가 잘림. `llm/gemini.py`에서 `disable_thinking=True` 기본값으로 `thinkingConfig.thinkingBudget=0` 강제 (thinking 미지원 모델에는 무해)
 
 ## Workflow Rules
 

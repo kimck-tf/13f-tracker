@@ -63,8 +63,9 @@ print(c.execute('''
 - [x] Phase 2 — 4 시그널 + 종합 점수 (10,759 signals / 8,785 total_scores)
 - [x] Phase 3 — Strategy ABC + 6 전략 + Lookahead 가드 + Engine + Runner
 - [x] Phase 4 — Streamlit 5 페이지 + Quarto 6 챕터 + dashboard/report/update CLI
+- [x] Phase 4+ — Gemini LLM 통합 (분기 헤드라인 요약 + Top 10 시그널 해석)
 
-104 unit tests passed. (Phase 4 UI는 단위 테스트 X — Streamlit 부팅 health=200 자동 검증, Quarto 렌더는 사용자 환경 CLI 설치 후 수동 검증)
+113 unit tests passed. (Phase 4 UI는 단위 테스트 X — Streamlit 부팅 health=200 자동 검증, Quarto 렌더는 사용자 환경 CLI 설치 후 수동 검증; LLM은 실제 Gemini 호출 end-to-end 검증)
 
 ## Phase 3 Backtest Snapshot (2024-01-02 ~ 2026-05-20, cost_bps=10)
 
@@ -104,7 +105,7 @@ print(c.execute('''
 
 ## Tech Stack
 
-Python ≥ 3.11 / uv / httpx / lxml / duckdb / polars / pyyaml / typer / yfinance / rich / tenacity / streamlit + plotly + Quarto (Phase 4)
+Python ≥ 3.11 / uv / httpx / lxml / duckdb / polars / pyyaml / typer / yfinance / rich / tenacity / streamlit + plotly + Quarto (Phase 4) / Gemini API (raw httpx, optional)
 
 ## Design References
 
