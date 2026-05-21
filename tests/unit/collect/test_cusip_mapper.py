@@ -9,6 +9,7 @@ from thirteen_f.collect.cusip_mapper import (
     upsert_mapping,
     fill_missing,
     _pick_us_primary,
+    _normalize_ticker,
 )
 
 
@@ -63,6 +64,29 @@ def test_pick_us_primary_none_when_no_us():
         {"exchCode": "XF", "ticker": "CPG2CAD"},
     ]
     assert _pick_us_primary(data) is None
+
+
+def test_normalize_ticker_slash_to_dash():
+    """OpenFIGI 'BRK/B' → yfinance 'BRK-B' (Berkshire B 클래스주)."""
+    assert _normalize_ticker("BRK/B") == "BRK-B"
+    assert _normalize_ticker("BF/B") == "BF-B"
+    assert _normalize_ticker("OXY/WS") == "OXY-WS"
+
+
+def test_normalize_ticker_dot_to_dash():
+    """yfinance는 'BRK.B'도 비표준 — dash로 통일."""
+    assert _normalize_ticker("BRK.B") == "BRK-B"
+
+
+def test_normalize_ticker_simple():
+    """일반 ticker는 그대로."""
+    assert _normalize_ticker("AAPL") == "AAPL"
+    assert _normalize_ticker("MSFT") == "MSFT"
+
+
+def test_normalize_ticker_none():
+    assert _normalize_ticker(None) is None
+    assert _normalize_ticker("") == ""
 
 
 def test_pick_us_primary_handles_nasdaq_codes():

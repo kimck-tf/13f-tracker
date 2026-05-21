@@ -41,6 +41,17 @@ def _pick_us_primary(data: list[dict[str, Any]]) -> dict[str, Any] | None:
     return None
 
 
+def _normalize_ticker(ticker: str | None) -> str | None:
+    """OpenFIGI ticker → yfinance 호환 형식.
+
+    OpenFIGI는 클래스주를 'BRK/B', 'BF/B', warrants를 'FLYX/WS' 등 슬래시로 표기.
+    yfinance는 'BRK-B', 'BF-B' (dash) 형식만 인식. 점 표기 'BRK.B'도 yfinance에서 비표준.
+    """
+    if not ticker:
+        return ticker
+    return ticker.replace("/", "-").replace(".", "-")
+
+
 def fetch_cache(
     conn: duckdb.DuckDBPyConnection, cusips: list[str]
 ) -> dict[str, dict[str, Any]]:
@@ -120,7 +131,7 @@ def _openfigi_batch(
         out.append(
             {
                 "cusip": cusip,
-                "ticker": us.get("ticker"),
+                "ticker": _normalize_ticker(us.get("ticker")),
                 "figi": us.get("compositeFIGI") or us.get("figi"),
                 "name": us.get("name"),
                 "is_etf": is_etf,

@@ -18,8 +18,8 @@ def to_stooq_ticker(yf_ticker: str) -> str:
     return yf_ticker.replace(".", "-") + ".US"
 
 
-def _yfinance_download(ticker: str, start: date) -> pd.DataFrame | None:
-    """Try yfinance. Returns DataFrame or None on failure."""
+def _yf_try(ticker: str, start: date) -> pd.DataFrame | None:
+    """yfinance 단일 시도 — 빈 결과 시 None."""
     try:
         import yfinance as yf
 
@@ -32,13 +32,24 @@ def _yfinance_download(ticker: str, start: date) -> pd.DataFrame | None:
         )
         if df is None or df.empty:
             return None
-        # yfinance multi-level columns 평탄화
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         return df
     except Exception as e:
         logger.warning("yfinance failed for %s: %s", ticker, e)
         return None
+
+
+def _yfinance_download(ticker: str, start: date) -> pd.DataFrame | None:
+    """yfinance + 1회 휴리스틱 재시도. yfinance는 timeout/일시적 404 시 빈
+    DataFrame을 반환하므로 약 2초 대기 후 한 번 더 시도하여 GOOGL·RH 같은
+    intermittent 실패를 복구."""
+    import time
+    df = _yf_try(ticker, start)
+    if df is not None and not df.empty:
+        return df
+    time.sleep(2.0)
+    return _yf_try(ticker, start)
 
 
 def _stooq_download(ticker: str, start: date) -> pd.DataFrame | None:
