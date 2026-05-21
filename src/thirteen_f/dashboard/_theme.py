@@ -359,10 +359,26 @@ hr {{
     border-bottom: 1px dotted var(--border-line);
 }}
 
-/* === Hide Streamlit chrome === */
+/* === Streamlit chrome — header 유지 (사이드바 collapse 버튼 보존) === */
 #MainMenu, footer {{ visibility: hidden !important; }}
 [data-testid="stToolbar"] {{ display: none !important; }}
-header[data-testid="stHeader"] {{ background: transparent !important; height: 0 !important; }}
+header[data-testid="stHeader"] {{
+    background: transparent !important;
+    /* height 줄이지 않음 — 사이드바 열기 버튼이 여기 있음 */
+}}
+/* 사이드바 collapse 버튼 명시 보존 (Streamlit 버전별 selector 차이 대비) */
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stSidebarCollapseButton"] {{
+    display: block !important;
+    visibility: visible !important;
+    z-index: 999 !important;
+}}
+[data-testid="collapsedControl"] svg,
+[data-testid="stSidebarCollapsedControl"] svg {{
+    color: var(--text-secondary) !important;
+    fill: var(--text-secondary) !important;
+}}
 
 /* Sidebar — section title 작게 */
 [data-testid="stSidebar"] .stMarkdown h1,
