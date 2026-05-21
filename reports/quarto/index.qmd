@@ -1,0 +1,42 @@
+---
+title: "13F Quarterly Report"
+---
+
+```{python}
+#| echo: false
+from _common import get_conn, resolve_quarter
+
+conn = get_conn()
+period = resolve_quarter(conn)  # 환경변수 THIRTEEN_F_QUARTER 자동 사용
+
+n_holdings = conn.execute(
+    "SELECT COUNT(*) FROM holdings h JOIN filings f ON h.accession_no=f.accession_no "
+    "WHERE f.period_of_report = ? AND f.superseded_by IS NULL",
+    (period,),
+).fetchone()[0]
+n_managers = conn.execute(
+    "SELECT COUNT(DISTINCT cik) FROM filings WHERE period_of_report = ? AND superseded_by IS NULL",
+    (period,),
+).fetchone()[0]
+top5 = conn.execute(
+    "SELECT ticker, total_score FROM total_scores WHERE period_of_report = ? "
+    "ORDER BY total_score DESC NULLS LAST LIMIT 5",
+    (period,),
+).fetchdf()
+```
+
+# {{< meta title >}}
+
+**Quarter:** `{python} str(period)`
+**Managers reporting:** `{python} n_managers`
+**Holdings rows:** `{python} f"{n_holdings:,}"`
+
+## Top 5 by Total Score
+
+```{python}
+#| echo: false
+top5
+```
+
+> 본 리포트의 시그널은 13F 데이터의 구조적 한계(45일 지연·롱 온리·분기 스냅샷·기밀 처리)를 전제로 합니다.
+> 모든 결과는 참고용이며 투자 권유가 아닙니다.

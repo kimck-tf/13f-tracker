@@ -1,0 +1,21 @@
+project:
+  type: book
+  output-dir: ../output/_default
+
+book:
+  title: "13F Quarterly Report"
+  chapters:
+    - index.qmd
+    - 01_overview.qmd
+    - 02_managers.qmd
+    - 03_signals.qmd
+    - 04_backtest.qmd
+    - 05_data_quality.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    code-fold: true
+
+jupyter: python3

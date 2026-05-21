@@ -1,0 +1,22 @@
+---
+title: "Top Signals"
+---
+
+```{python}
+#| echo: false
+from _common import get_conn, resolve_quarter
+conn = get_conn()
+period = resolve_quarter(conn)  # THIRTEEN_F_QUARTER 환경변수 사용
+
+conn.execute(
+    """
+    SELECT ticker, cusip, total_score, consensus_score, conviction_score,
+           continuity_score, cloning_quality_score
+    FROM total_scores
+    WHERE period_of_report = ?
+    ORDER BY total_score DESC NULLS LAST
+    LIMIT 50
+    """,
+    (period,),
+).fetchdf()
+```

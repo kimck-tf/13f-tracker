@@ -1,0 +1,26 @@
+---
+title: "Backtest Comparison"
+---
+
+```{python}
+#| echo: false
+from _common import get_conn
+from thirteen_f.dashboard.charts import cumulative_curve, drawdown_chart
+from thirteen_f.dashboard.tables import backtest_curves_df, backtest_metrics_df
+
+conn = get_conn()
+metrics = backtest_metrics_df(conn)
+metrics
+```
+
+```{python}
+#| echo: false
+run_ids = metrics["run_id"].tolist()[:6]
+curves = backtest_curves_df(conn, run_ids)
+cumulative_curve(curves)
+```
+
+```{python}
+#| echo: false
+drawdown_chart(curves)
+```

@@ -1,0 +1,46 @@
+---
+title: "Overview"
+---
+
+```{python}
+#| echo: false
+from _common import get_conn, resolve_quarter
+from thirteen_f.dashboard.charts import change_waterfall, consensus_heatmap
+
+conn = get_conn()
+period = resolve_quarter(conn)  # THIRTEEN_F_QUARTER 환경변수 사용
+```
+
+# Consensus Heatmap (Top 30)
+
+```{python}
+#| echo: false
+import pandas as pd
+
+rows = conn.execute(
+    """
+    SELECT s.cusip, COALESCE(m.ticker, s.cusip) AS ticker,
+           mn.label, s.weight_pct
+    FROM signals_quarterly s
+    JOIN managers mn ON mn.cik = s.cik
+    LEFT JOIN cusip_ticker_map m ON m.cusip = s.cusip
+    WHERE s.period_of_report = ? AND s.change_type != 'exit'
+    """,
+    (period,),
+).fetchdf()
+matrix = rows.pivot_table(index="ticker", columns="label", values="weight_pct", fill_value=0)
+matrix["__sum"] = matrix.sum(axis=1)
+matrix = matrix.sort_values("__sum", ascending=False).head(30).drop(columns="__sum")
+consensus_heatmap(matrix)
+```
+
+# Change Type Distribution
+
+```{python}
+#| echo: false
+counts = dict(conn.execute(
+    "SELECT change_type, COUNT(*) FROM signals_quarterly WHERE period_of_report = ? GROUP BY 1",
+    (period,),
+).fetchall())
+change_waterfall(counts)
+```

@@ -1,0 +1,35 @@
+---
+title: "Data Quality"
+---
+
+```{python}
+#| echo: false
+from _common import get_conn, resolve_quarter
+conn = get_conn()
+period = resolve_quarter(conn)  # THIRTEEN_F_QUARTER 환경변수 사용
+```
+
+# 정정본 추적
+
+```{python}
+#| echo: false
+conn.execute(
+    """
+    SELECT m.label,
+           COUNT(*) FILTER (WHERE is_amendment) AS amendments,
+           COUNT(*) FILTER (WHERE superseded_by IS NOT NULL) AS superseded
+    FROM filings f JOIN managers m ON m.cik = f.cik
+    GROUP BY m.label
+    ORDER BY m.label
+    """
+).fetchdf()
+```
+
+# CUSIP 매핑 실패
+
+```{python}
+#| echo: false
+n_total = conn.execute("SELECT COUNT(*) FROM cusip_ticker_map").fetchone()[0]
+n_null = conn.execute("SELECT COUNT(*) FROM cusip_ticker_map WHERE ticker IS NULL").fetchone()[0]
+print(f"전체 CUSIP: {n_total}, 매핑 실패: {n_null} ({n_null*100/n_total:.1f}%)" if n_total else "데이터 없음")
+```
