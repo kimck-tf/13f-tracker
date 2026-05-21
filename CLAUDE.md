@@ -68,7 +68,7 @@ uv run python scripts/supplement.py         # one-off: slash normalize + missing
 - **Nygren CIK** — `company_tickers.json`에 ticker 없는 13F-only filer라 resolve_cik 실패. yaml에 직접 `0000813917` 입력 (Harris Associates L P)
 - **pandas-datareader 0.10** — pandas 3.0과 비호환. Stooq는 httpx 직접 호출로 교체됨
 - **Quarto CLI 시스템 의존성** — `uv run thirteen-f report`는 OS-level `quarto` 실행 파일 필요. Windows: `winget install RStudio.Quarto`. 미설치 시 명령은 안내 메시지 후 exit 2
-- **Gemini thinking 모델 토큰 소진** — `gemini-3-flash-preview` 같은 thinking 모델은 `max_output_tokens` 한도를 thinking에 먼저 소모해 응답 텍스트가 잘림. `llm/gemini.py`에서 `disable_thinking=True` 기본값으로 `thinkingConfig.thinkingBudget=0` 강제 (thinking 미지원 모델에는 무해)
+- **Gemini thinking 모델 토큰 한도** — `gemini-3-flash-preview` 같은 thinking 모델은 `max_output_tokens`를 thinking 토큰과 응답 토큰이 함께 나눠 쓴다. thinking을 살리려면 한도를 크게 잡아야 함. 현재 기본값 `llm/gemini.py:generate(max_output_tokens=8192)`, headline 호출 4096, explain 호출 8192. 실측: thinking 800~1700 + 응답 200~330 토큰 (모두 finishReason=STOP)
 
 ## Workflow Rules
 
