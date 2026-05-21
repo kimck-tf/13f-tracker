@@ -52,8 +52,16 @@ def drawdown_chart(curves_df: pd.DataFrame) -> go.Figure:
 
 def consensus_heatmap(matrix: pd.DataFrame) -> go.Figure:
     """matrix: rows=tickers, cols=manager labels, values=weight or 1/0."""
+    # 다크 테마용 커스텀 스케일 (배경 + accent green)
+    scale = [
+        [0.0, "#0F1722"],
+        [0.15, "#143A3A"],
+        [0.4, "#0F7060"],
+        [0.7, "#00C896"],
+        [1.0, "#7AF0C8"],
+    ]
     fig = px.imshow(
-        matrix, color_continuous_scale="Blues", aspect="auto",
+        matrix, color_continuous_scale=scale, aspect="auto",
         labels=dict(color="weight"),
     )
     fig.update_layout(title="Consensus Heatmap", height=600)
@@ -61,14 +69,26 @@ def consensus_heatmap(matrix: pd.DataFrame) -> go.Figure:
 
 
 def change_waterfall(counts: dict[str, int]) -> go.Figure:
-    """counts: {change_type: count}."""
+    """counts: {change_type: count}. 다크 테마 + 의미별 컬러."""
     order = ["new", "increase", "hold", "decrease", "exit"]
+    color_map = {
+        "new": "#00C896",       # accent green
+        "increase": "#5EA2EF",  # blue (포지션 추가)
+        "hold": "#6B7785",      # muted (변화 없음)
+        "decrease": "#F5A623",  # amber (경고)
+        "exit": "#FF3B5C",      # accent red
+    }
+    keys = [k for k in order if k in counts]
     fig = go.Figure(go.Bar(
-        x=[c for c in order if c in counts],
-        y=[counts[c] for c in order if c in counts],
-        marker_color=["#2ecc71", "#27ae60", "#bdc3c7", "#e67e22", "#c0392b"][:len(counts)],
+        x=keys,
+        y=[counts[k] for k in keys],
+        marker_color=[color_map[k] for k in keys],
+        marker_line_width=0,
+        text=[f"{counts[k]:,}" for k in keys],
+        textposition="outside",
+        textfont=dict(family="IBM Plex Mono, monospace", size=11, color="#E6EAF0"),
     ))
-    fig.update_layout(title="Change Type Distribution", height=300)
+    fig.update_layout(title="Change Type Distribution", height=300, showlegend=False)
     return fig
 
 

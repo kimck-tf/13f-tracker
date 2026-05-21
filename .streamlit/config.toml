@@ -1,0 +1,16 @@
+# 13F Tracker — quiet finance terminal theme
+# (Bloomberg/Robinhood inspired, IBM Plex 계열 폰트는 _theme.py에서 CSS 주입)
+
+[theme]
+base = "dark"
+primaryColor = "#00C896"
+backgroundColor = "#0A0E14"
+secondaryBackgroundColor = "#13181F"
+textColor = "#E6EAF0"
+font = "sans serif"
+
+[server]
+headless = false
+
+[browser]
+gatherUsageStats = false
