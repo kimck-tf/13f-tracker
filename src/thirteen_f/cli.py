@@ -59,9 +59,70 @@ def analyze(
 def backtest(
     strategy: str = typer.Option(None, help="실행할 전략 이름. --all과 동시 사용 금지."),
     all_: bool = typer.Option(False, "--all", help="등록된 6개 전략 모두 실행."),
+    start: str = typer.Option("2013-01-01", help="백테스트 시작일 (YYYY-MM-DD)"),
+    end: str = typer.Option(None, help="백테스트 종료일 (YYYY-MM-DD, 기본=오늘)"),
+    cost_bps: float = typer.Option(10.0, help="편도 거래비용 (bp)"),
 ) -> None:
-    """Phase 3: 백테스트 실행."""
-    typer.echo(f"backtest: not implemented yet (Phase 3). args={strategy=} {all_=}")
+    """Phase 3: 백테스트 실행. --all 또는 --strategy 중 하나 지정."""
+    from datetime import date as _date, datetime
+    from pathlib import Path
+
+    from thirteen_f.backtest.runner import run_suite
+    from thirteen_f.core.config import load_settings
+    from thirteen_f.core.logging import get_logger
+
+    if not all_ and not strategy:
+        typer.echo("Either --all or --strategy must be set", err=True)
+        raise typer.Exit(1)
+
+    settings = load_settings()
+    get_logger(log_dir=Path("data/logs"))
+    s = datetime.fromisoformat(start).date()
+    e = datetime.fromisoformat(end).date() if end else _date.today()
+
+    if all_:
+        results = run_suite(settings.duckdb_path, s, e, cost_bps=cost_bps)
+        for r in results:
+            typer.echo(
+                f"{r['name']:60s} CAGR={r['cagr']*100:6.2f}%  "
+                f"MDD={r['mdd']*100:6.2f}%  Sharpe={r['sharpe']:.2f}"
+            )
+        return
+
+    # 단일 전략 실행 (간단한 dispatch)
+    import duckdb
+
+    from thirteen_f.backtest.engine import run_backtest
+    from thirteen_f.backtest.strategies.consensus_top_k import ConsensusTopK
+    from thirteen_f.backtest.strategies.conviction_follow import ConvictionFollow
+    from thirteen_f.backtest.strategies.new_buy_only import NewBuyOnly
+    from thirteen_f.backtest.strategies.score_top_k import ScoreTopK
+    from thirteen_f.backtest.strategies.single_manager import SingleManagerClone
+
+    registry = {
+        "ScoreTopK": lambda: ScoreTopK(top_k=20),
+        "ConsensusTopK": lambda: ConsensusTopK(min_holders=3, top_k=20),
+        "ConvictionFollow": lambda: ConvictionFollow(top_k=10),
+        "NewBuyOnly": lambda: NewBuyOnly(min_holders=2, top_k=15),
+    }
+    if strategy.startswith("SingleManagerClone("):
+        label = strategy.split("(")[1].rstrip(")")
+        strat = SingleManagerClone(label=label)
+    elif strategy in registry:
+        strat = registry[strategy]()
+    else:
+        typer.echo(f"Unknown strategy: {strategy}", err=True)
+        raise typer.Exit(1)
+
+    conn = duckdb.connect(str(settings.duckdb_path))
+    try:
+        res = run_backtest(
+            strategy=strat, start=s, end=e, conn=conn,
+            cost_bps=cost_bps, persist=True,
+        )
+        typer.echo(f"{strat.name}: {res.metrics}")
+    finally:
+        conn.close()
 
 
 @app.command()
