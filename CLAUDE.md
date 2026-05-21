@@ -21,7 +21,7 @@
 
 ## Tech Stack
 
-Python ≥3.11 (uv) / httpx / lxml / duckdb / polars / pyyaml / typer / yfinance / streamlit / plotly / rich / tenacity / vcrpy (test) / Quarto CLI (Phase 4)
+Python ≥3.11 (uv) / httpx / lxml / duckdb / polars / pyyaml / typer / yfinance / streamlit / plotly / rich / tenacity / vcrpy (test) / Quarto CLI (Phase 4) / Gemini API (raw httpx, 선택)
 
 ## Commands
 
@@ -34,7 +34,7 @@ uv run thirteen-f dashboard                 # Phase 4: Streamlit 5 페이지 (ht
 uv run thirteen-f report --latest --open    # Phase 4: Quarto 6 챕터 → HTML (Quarto CLI 필요)
 uv run thirteen-f update --skip-collect --skip-backtest  # 오케스트레이션: 단계별 skip 가능
 
-uv run pytest tests/unit -q                 # 104 passed
+uv run pytest tests/unit -q                 # 119 passed
 uv run python scripts/supplement.py         # one-off: slash normalize + missing prices
 ```
 
@@ -47,7 +47,7 @@ uv run python scripts/supplement.py         # one-off: slash normalize + missing
 - **종합 점수 weights** (Spec §6.1): consensus 0.30 + conviction 0.30 + continuity 0.20 + cloning_quality 0.20 = 1.0 (load 시 합 검증)
 - **거장 15명** (Spec §1.2): value 7 + activist 4 + macro 4 (Ray Dalio Bridgewater 포함, ETF 비중 큼)
 - **holdings PK** (Spec §4.2): (accession_no, cusip, title_of_class, put_call) — NULL 회피 위해 마지막 2개는 NOT NULL DEFAULT ''
-- **단일 패키지 모듈러**: `src/thirteen_f/` (core / collect / analyze / backtest / dashboard)
+- **단일 패키지 모듈러**: `src/thirteen_f/` (core / collect / analyze / backtest / dashboard / llm)
 - **데이터 저장소**: DuckDB 단일 파일 `data/13f.duckdb` (커밋 금지)
 
 ## Environment Variables (.env)
@@ -86,3 +86,5 @@ uv run python scripts/supplement.py         # one-off: slash normalize + missing
 - **Phase 진행 / 다음 task** → Plan의 해당 Chunk 절 + DoD 체크리스트
 - **수집 후 데이터 부족 / 매핑 실패** → `scripts/supplement.py` 패턴 (post-collect fixup)
 - **DuckDB 스키마 변경** → `scripts/init_db.py` 먼저 수정 후 코드 / Spec §4.2 동기화
+- **LLM prompt 수정 / 새 챕터 추가** → `src/thirteen_f/llm/prompts.py` (prompt builder) + `src/thirteen_f/llm/summary.py` (DB fetch). Quarto 셀에서 `enable_thinking=_settings.gemini_thinking` 전달 유지
+- **Gemini 응답 잘림** → finishReason / `usageMetadata.thoughtsTokenCount` 확인 (`scripts/bench_llm.py`). thinking ON일 때 `max_output_tokens`를 충분히 크게 (headline 4096+ / explain 8192+)

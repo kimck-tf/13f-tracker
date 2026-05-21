@@ -6,8 +6,9 @@
 
 - **수집**: SEC EDGAR에서 분기별 13F-HR 공시 직접 파싱 (httpx + lxml)
 - **분석**: 분기 간 변화·conviction·continuity·consensus 4 시그널 + 가중 종합 점수
-- **시각화** (예정): Streamlit 대시보드 + Quarto 분기 리포트
-- **백테스트** (예정): 6 전략 (SingleManagerClone, ConsensusTopK, ScoreTopK 등) + Lookahead-free 검증
+- **백테스트**: 6 전략 (SingleManagerClone, ConsensusTopK, ScoreTopK, ConvictionFollow, NewBuyOnly, Ensemble) + Lookahead-free 검증
+- **시각화**: Streamlit 5 페이지 대시보드 (Overview / Manager / Signals / Backtest / Compare)
+- **리포트**: Quarto 6 챕터 단일 HTML (선택: Gemini LLM 분기 헤드라인 요약 + Top 10 시그널 해석)
 
 ## Tracked Managers (15)
 
@@ -26,10 +27,18 @@ uv sync
 
 # 2) .env (SEC fair-access policy)
 cp .env.example .env
-# .env 편집 → SEC_USER_AGENT="Your Name email@domain.com"
+# .env 편집:
+#   SEC_USER_AGENT="Your Name email@domain.com"   (필수)
+#   GOOGLE_API_KEY="..."                          (선택, LLM 요약/해석 활성화)
+#   GEMINI_THINKING="true"                        (선택, 기본 true)
 
 # 3) DuckDB 11 테이블 초기화
 uv run python scripts/init_db.py
+
+# 4) (선택) Quarto CLI 설치 — 분기 HTML 리포트용
+#   Windows:  winget install RStudio.Quarto
+#   macOS:    brew install --cask quarto
+#   미설치 시 dashboard / backtest 는 정상, report 만 안내 후 종료
 ```
 
 ## Quick Start
@@ -63,9 +72,9 @@ print(c.execute('''
 - [x] Phase 2 — 4 시그널 + 종합 점수 (10,759 signals / 8,785 total_scores)
 - [x] Phase 3 — Strategy ABC + 6 전략 + Lookahead 가드 + Engine + Runner
 - [x] Phase 4 — Streamlit 5 페이지 + Quarto 6 챕터 + dashboard/report/update CLI
-- [x] Phase 4+ — Gemini LLM 통합 (분기 헤드라인 요약 + Top 10 시그널 해석)
+- [x] Phase 4+ — Gemini LLM 통합 (분기 헤드라인 요약 + Top 10 시그널 해석, thinking on/off 토글)
 
-113 unit tests passed. (Phase 4 UI는 단위 테스트 X — Streamlit 부팅 health=200 자동 검증, Quarto 렌더는 사용자 환경 CLI 설치 후 수동 검증; LLM은 실제 Gemini 호출 end-to-end 검증)
+119 unit tests passed. (Phase 4 UI는 단위 테스트 X — Streamlit 부팅 health=200 자동 검증, Quarto 렌더는 사용자 환경 CLI 설치 후 수동 검증; LLM은 httpx mock + 실 Gemini 호출 end-to-end 검증)
 
 ## Phase 3 Backtest Snapshot (2024-01-02 ~ 2026-05-20, cost_bps=10)
 
@@ -91,6 +100,22 @@ print(c.execute('''
 
 4. **Lookahead bias 차단은 검증됨** (Spec §7.4)
    5개 전략 × 미래 filing 노출 6 케이스 단위 테스트로 확인. `filings.filed_at <= as_of_date` 가드는 모든 전략 SQL에 강제됨.
+
+## LLM 보조 (선택)
+
+`.env`에 `GOOGLE_API_KEY` 입력 시 Quarto 리포트의 `index.qmd`와 `03_signals.qmd`가 Gemini를 호출하여 자동으로 한국어 요약 생성. API 키 없으면 placeholder 안내만 표시 — 다른 기능에는 영향 없음.
+
+- **`index.qmd`** — 분기 헤드라인 요약 (5문장 이내, 데이터 직접 인용)
+- **`03_signals.qmd`** — Top 10 종목 시그널 해석 (점수 강약, 매수 매도 권고 금지)
+
+### Thinking on/off
+
+| 설정 | 응답 시간 (headline) | 토큰 사용 | 품질 |
+|---|--:|--:|---|
+| `GEMINI_THINKING="true"` (기본) | ~7.4s | thinking ~750 + 응답 ~190 | thinking으로 답변 정돈 |
+| `GEMINI_THINKING="false"` | ~3.9s | thinking 0 + 응답 ~220 | 비교 가능, 약간 풍부 |
+
+함수 인자 `enable_thinking=False`로 호출 단위 override도 가능.
 
 ## CLI Commands
 
