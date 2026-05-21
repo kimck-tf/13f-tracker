@@ -165,7 +165,15 @@ def report(
         "--output-dir", str(out_dir.absolute()),
     ]
     # Spec §8.2: quarter는 환경변수로 전달 (Quarto -P shortcode 호환성 문제 회피)
+    # quarto가 cwd를 reports/quarto/ 로 바꿔 .env를 못 찾고, 상대경로(DUCKDB_PATH 등)도
+    # 잘못 해석되는 문제를 둘 다 해결 — .env 명시 로드 + 경로 절대화 후 env 주입
+    from dotenv import dotenv_values
     env = _os.environ.copy()
+    env_file_vars = dotenv_values(Path(".env"))
+    env.update({k: v for k, v in env_file_vars.items() if v is not None})
+    db_path = env_file_vars.get("DUCKDB_PATH", "data/13f.duckdb")
+    if db_path is not None:
+        env["DUCKDB_PATH"] = str(Path(db_path.strip('"')).resolve())
     env["THIRTEEN_F_QUARTER"] = q_arg
     typer.echo(f"Running: {' '.join(cmd)} (THIRTEEN_F_QUARTER={q_arg})")
     result = subprocess.run(cmd, check=False, env=env)
