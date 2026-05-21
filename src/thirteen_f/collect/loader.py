@@ -49,20 +49,36 @@ def upsert_holdings(
 ) -> None:
     if not holdings:
         return
+    # 13F XML이 동일 (cusip, title_of_class, put_call) 조합을 voting authority /
+    # investmentDiscretion 별로 분할 보고하는 경우가 있음. PK는 (accession, cusip, class,
+    # put_call) 이므로 미리 SUM(shares, value_usd) 집계해 PK 충돌을 방지.
+    agg: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for h in holdings:
+        key = (h["cusip"], h.get("title_of_class") or "", h.get("put_call") or "")
+        if key in agg:
+            agg[key]["value_usd"] = (agg[key].get("value_usd") or 0) + (h.get("value_usd") or 0)
+            agg[key]["shares"] = (agg[key].get("shares") or 0) + (h.get("shares") or 0)
+        else:
+            agg[key] = {
+                "name_of_issuer": h.get("name_of_issuer"),
+                "value_usd": h.get("value_usd"),
+                "shares": h.get("shares"),
+                "share_type": h.get("share_type"),
+            }
     # 동일 accession_no 재적재 시 기존 행 모두 삭제 후 재삽입 (idempotent)
     conn.execute("DELETE FROM holdings WHERE accession_no = ?", (accession_no,))
     rows = [
         (
             accession_no,
-            h["cusip"],
-            h.get("name_of_issuer"),
-            h.get("title_of_class") or "",
-            h.get("value_usd"),
-            h.get("shares"),
-            h.get("share_type"),
-            h.get("put_call") or "",
+            cusip,
+            v["name_of_issuer"],
+            cls,
+            v["value_usd"],
+            v["shares"],
+            v["share_type"],
+            put_call,
         )
-        for h in holdings
+        for (cusip, cls, put_call), v in agg.items()
     ]
     conn.executemany(
         """
@@ -103,6 +119,11 @@ def mark_supersedes(conn: duckdb.DuckDBPyConnection, cik: str) -> int:
     updates: list[tuple[str | None, str]] = []
     for acc, rn, latest_acc in rows:
         updates.append((None if rn == 1 else latest_acc, acc))
+
+    if not updates:
+        # cik에 해당하는 filing이 0개일 때 (start_date 필터 이후 미보고 등) DuckDB
+        # executemany는 빈 리스트로 호출 시 InvalidInputException — early return.
+        return 0
 
     conn.executemany(
         "UPDATE filings SET superseded_by = ? WHERE accession_no = ?",
