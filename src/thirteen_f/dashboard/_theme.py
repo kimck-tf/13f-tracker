@@ -538,3 +538,57 @@ def section(title: str) -> None:
 def ticker_badge(ticker: str) -> str:
     """티커 뱃지 HTML — markdown 안에 inline 사용."""
     return f'<span class="fnc-ticker">{ticker}</span>'
+
+
+def sidebar_toggle() -> None:
+    """사이드바 표시/숨김 토글 — 모든 페이지 상단에서 호출.
+
+    session_state['fnc_sidebar_hidden'] 로 상태 관리. 페이지 이동·새로고침 시:
+    - 사이드바 안: "◀ 사이드바 숨김" 버튼
+    - 사이드바 숨김 시 메인 영역 좌측 상단: "사이드바 표시 ▶" 버튼
+
+    Streamlit native sidebar collapse는 transform 기반이라 한 번 닫으면 다시
+    못 여는 문제 (Streamlit 1.57) 가 있어, _theme.py에서 사이드바 transform을
+    무력화하고 우리 자체 토글로 대체.
+    """
+    if "fnc_sidebar_hidden" not in st.session_state:
+        st.session_state.fnc_sidebar_hidden = False
+
+    if st.session_state.fnc_sidebar_hidden:
+        # 1. 사이드바 숨김용 CSS 주입 (디스플레이 none)
+        st.markdown(
+            """
+            <style>
+            [data-testid="stSidebar"] { display: none !important; }
+            [data-testid="stSidebar"] + section { margin-left: 0 !important; }
+            section[data-testid="stMain"] {
+                padding-left: 0 !important;
+                margin-left: 0 !important;
+            }
+            .block-container { padding-left: 2.5rem !important; }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        # 2. 메인 영역 좌측 상단에 "표시" 버튼
+        col_btn, _ = st.columns([1, 11])
+        with col_btn:
+            if st.button(
+                "▶ Show",
+                key="fnc_sb_show_btn",
+                help="사이드바 다시 표시 (Show sidebar)",
+                use_container_width=True,
+            ):
+                st.session_state.fnc_sidebar_hidden = False
+                st.rerun()
+    else:
+        # 사이드바 안 가장 위에 "숨김" 버튼
+        with st.sidebar:
+            if st.button(
+                "◀ Hide Sidebar",
+                key="fnc_sb_hide_btn",
+                help="본문 공간 확장",
+                use_container_width=True,
+            ):
+                st.session_state.fnc_sidebar_hidden = True
+                st.rerun()

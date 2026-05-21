@@ -4,7 +4,7 @@ from __future__ import annotations
 import streamlit as st
 
 from thirteen_f.core.config import load_settings
-from thirteen_f.dashboard._theme import apply_theme, kpi_card, section, status_bar
+from thirteen_f.dashboard._theme import apply_theme, kpi_card, section, sidebar_toggle, status_bar
 from thirteen_f.dashboard.charts import cumulative_curve, drawdown_chart
 from thirteen_f.dashboard.tables import (
     backtest_curves_df,
@@ -14,6 +14,7 @@ from thirteen_f.dashboard.tables import (
 
 st.set_page_config(page_title="Backtest · 13F", page_icon="◆", layout="wide")
 apply_theme()
+sidebar_toggle()
 
 st.title("Backtest Results")
 

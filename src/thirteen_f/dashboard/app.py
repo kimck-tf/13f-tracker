@@ -4,7 +4,7 @@ from __future__ import annotations
 import streamlit as st
 
 from thirteen_f.core.config import load_settings
-from thirteen_f.dashboard._theme import apply_theme, kpi_card, section, status_bar
+from thirteen_f.dashboard._theme import apply_theme, kpi_card, section, sidebar_toggle, status_bar
 from thirteen_f.dashboard.tables import (
     get_read_only_conn,
     latest_period,
@@ -19,6 +19,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 apply_theme()
+sidebar_toggle()
 
 st.title("13F Portfolio Tracker")
 

@@ -7,11 +7,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from thirteen_f.core.config import load_settings
-from thirteen_f.dashboard._theme import COLORS, apply_theme, section, status_bar
+from thirteen_f.dashboard._theme import COLORS, apply_theme, section, sidebar_toggle, status_bar
 from thirteen_f.dashboard.tables import get_read_only_conn
 
 st.set_page_config(page_title="Compare · 13F", page_icon="◆", layout="wide")
 apply_theme()
+sidebar_toggle()
 
 st.title("Compare Managers")
 

@@ -5,12 +5,13 @@ import pandas as pd
 import streamlit as st
 
 from thirteen_f.core.config import load_settings
-from thirteen_f.dashboard._theme import apply_theme, section, status_bar
+from thirteen_f.dashboard._theme import apply_theme, section, sidebar_toggle, status_bar
 from thirteen_f.dashboard.charts import change_waterfall, consensus_heatmap
 from thirteen_f.dashboard.tables import get_read_only_conn
 
 st.set_page_config(page_title="Overview · 13F", page_icon="◆", layout="wide")
 apply_theme()
+sidebar_toggle()
 
 st.title("Quarter Overview")
 
