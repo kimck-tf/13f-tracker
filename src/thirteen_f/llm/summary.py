@@ -98,10 +98,10 @@ def headline_summary(
         change_counts=ctx["change_counts"],
         new_buy_top=ctx["new_buy_top"],
     )
-    return generate(prompt, api_key=api_key, model=model, max_output_tokens=512)
+    return generate(prompt, api_key=api_key, model=model, max_output_tokens=1024)
 
 
-def explain_top_signals(
+def explain_top_signals(  # noqa: D401
     conn: duckdb.DuckDBPyConnection,
     period: date,
     api_key: str,
@@ -115,4 +115,4 @@ def explain_top_signals(
     if not rows:
         return None
     prompt = signal_explain_prompt(period=str(period), rows=rows)
-    return generate(prompt, api_key=api_key, model=model, max_output_tokens=1024)
+    return generate(prompt, api_key=api_key, model=model, max_output_tokens=2048)
