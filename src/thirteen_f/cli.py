@@ -179,9 +179,40 @@ def report(
 
 
 @app.command()
-def update() -> None:
-    """collect → analyze → backtest --all → report --latest 순차 실행."""
-    typer.echo("update: not implemented yet")
+def update(
+    skip_collect: bool = typer.Option(False, help="collect 단계 건너뛰기"),
+    skip_backtest: bool = typer.Option(False, help="backtest 단계 건너뛰기"),
+    skip_report: bool = typer.Option(False, help="report 단계 건너뛰기"),
+) -> None:
+    """collect → analyze → backtest --all → report --latest 순차 실행.
+
+    ⚠️ typer command 함수를 Python에서 직접 호출하면 OptionInfo 기본값이 그대로
+    전달되어 타입 에러 발생. 따라서 subprocess로 자기 자신(thirteen-f CLI)을
+    재호출. 분기 1회 사용이라 overhead 무시 가능.
+    """
+    import subprocess
+    import sys
+
+    def run_step(args: list[str]) -> None:
+        cmd = [sys.executable, "-m", "thirteen_f.cli", *args]
+        typer.echo(f"$ {' '.join(cmd[2:])}")
+        result = subprocess.run(cmd, check=False)
+        if result.returncode != 0:
+            typer.echo(f"step failed: {args[0]} (exit={result.returncode})", err=True)
+            raise typer.Exit(result.returncode)
+
+    if not skip_collect:
+        typer.echo("=== Phase 1: collect ===")
+        run_step(["collect"])
+    typer.echo("=== Phase 2: analyze ===")
+    run_step(["analyze"])
+    if not skip_backtest:
+        typer.echo("=== Phase 3: backtest --all ===")
+        run_step(["backtest", "--all"])
+    if not skip_report:
+        typer.echo("=== Phase 4: report --latest ===")
+        run_step(["report", "--latest"])
+    typer.echo("=== Update complete ===")
 
 
 if __name__ == "__main__":
