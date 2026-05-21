@@ -62,9 +62,9 @@ print(c.execute('''
 - [x] Phase 1 — EDGAR 수집 (15명 / 110 filings / 10,867 holdings / 1,584 price tickers)
 - [x] Phase 2 — 4 시그널 + 종합 점수 (10,759 signals / 8,785 total_scores)
 - [x] Phase 3 — Strategy ABC + 6 전략 + Lookahead 가드 + Engine + Runner
-- [ ] Phase 4 — Streamlit 대시보드 + Quarto 분기 리포트
+- [x] Phase 4 — Streamlit 5 페이지 + Quarto 6 챕터 + dashboard/report/update CLI
 
-104 unit tests passed.
+104 unit tests passed. (Phase 4 UI는 단위 테스트 X — Streamlit 부팅 health=200 자동 검증, Quarto 렌더는 사용자 환경 CLI 설치 후 수동 검증)
 
 ## Phase 3 Backtest Snapshot (2024-01-02 ~ 2026-05-20, cost_bps=10)
 
@@ -98,9 +98,9 @@ print(c.execute('''
 | `thirteen-f collect [--start QUARTER]` | 1 | done |
 | `thirteen-f analyze [--threshold FLOAT]` | 2 | done |
 | `thirteen-f backtest [--strategy NAME / --all] [--start --end --cost-bps]` | 3 | done |
-| `thirteen-f dashboard` | 4 | todo |
-| `thirteen-f report [--quarter Q / --latest] [--open]` | 4 | todo |
-| `thirteen-f update` | all | todo |
+| `thirteen-f dashboard` | 4 | done (Streamlit 5 pages on :8501) |
+| `thirteen-f report [--quarter Q / --latest] [--open]` | 4 | done (Quarto CLI 필요) |
+| `thirteen-f update [--skip-collect / --skip-backtest / --skip-report]` | all | done |
 
 ## Tech Stack
 

@@ -8,7 +8,7 @@
 - [x] **Phase 1** — EDGAR 수집 파이프라인 (15명 / 110 filings / 10,867 holdings / 1,584 price tickers)
 - [x] **Phase 2** — 4 시그널(diff/conviction/continuity/consensus) + 종합 점수 (10,759 signals / 8,785 total_scores)
 - [x] **Phase 3** — Strategy ABC + 6 전략 + Lookahead 가드 + Engine + Runner (104 unit tests, 가용 데이터 기준 17개월 백테스트 검증)
-- [ ] **Phase 4** — Streamlit 대시보드 + Quarto 분기 리포트 (Gemini LLM 보조)
+- [x] **Phase 4** — Streamlit 5 페이지 + Quarto 6 챕터 + dashboard/report/update CLI (Streamlit 부팅 health=200 확인; Quarto는 사용자 환경 CLI 설치 후 검증)
 
 ## Reference Triggers
 
@@ -27,10 +27,11 @@ Python ≥3.11 (uv) / httpx / lxml / duckdb / polars / pyyaml / typer / yfinance
 ```bash
 uv run thirteen-f collect --start 2024Q1    # Phase 1: EDGAR + parser + CUSIP + prices
 uv run thirteen-f analyze                   # Phase 2: signals + score
-uv run thirteen-f backtest --all --start 2024-01-02   # Phase 3: 6 전략 백테스트 (CAGR/MDD/Sharpe 출력)
+uv run thirteen-f backtest --all --start 2024-01-02   # Phase 3: 6 전략 백테스트
 uv run thirteen-f backtest --strategy ScoreTopK --start 2024-01-02
-uv run thirteen-f dashboard                 # Phase 4 (TODO)
-uv run thirteen-f report --latest --open    # Phase 4 (TODO)
+uv run thirteen-f dashboard                 # Phase 4: Streamlit 5 페이지 (http://localhost:8501)
+uv run thirteen-f report --latest --open    # Phase 4: Quarto 6 챕터 → HTML (Quarto CLI 필요)
+uv run thirteen-f update --skip-collect --skip-backtest  # 오케스트레이션: 단계별 skip 가능
 
 uv run pytest tests/unit -q                 # 104 passed
 uv run python scripts/supplement.py         # one-off: slash normalize + missing prices
@@ -65,6 +66,7 @@ uv run python scripts/supplement.py         # one-off: slash normalize + missing
 - **NewBuyOnly CAGR 39.74%** — 17개월 백테스트에서 small-cap 신규매수 consensus rotation 효과로 과대 노출 가능성. 표본 기간 짧고 fee/slippage 가정 단순(편도 10bp)이라 실거래 재현성 ≠ 동일. 더 긴 기간·실제 비용 모델로 재검증 필요
 - **Nygren CIK** — `company_tickers.json`에 ticker 없는 13F-only filer라 resolve_cik 실패. yaml에 직접 `0000813917` 입력 (Harris Associates L P)
 - **pandas-datareader 0.10** — pandas 3.0과 비호환. Stooq는 httpx 직접 호출로 교체됨
+- **Quarto CLI 시스템 의존성** — `uv run thirteen-f report`는 OS-level `quarto` 실행 파일 필요. Windows: `winget install RStudio.Quarto`. 미설치 시 명령은 안내 메시지 후 exit 2
 
 ## Workflow Rules
 
