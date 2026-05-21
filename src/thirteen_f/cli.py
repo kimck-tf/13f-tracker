@@ -33,9 +33,26 @@ def collect(
 
 
 @app.command()
-def analyze() -> None:
+def analyze(
+    threshold: float = typer.Option(0.05, help="hold/increase/decrease 분류 threshold"),
+) -> None:
     """Phase 2: 시그널 점수 계산."""
-    typer.echo("analyze: not implemented yet (Phase 2)")
+    from pathlib import Path
+
+    from thirteen_f.analyze.pipeline import run_analyze
+    from thirteen_f.core.config import load_settings
+    from thirteen_f.core.logging import get_logger
+
+    settings = load_settings()
+    log = get_logger(log_dir=Path("data/logs"))
+    log.info("Phase 2 analyze start (threshold=%.3f)", threshold)
+    stats = run_analyze(
+        db_path=settings.duckdb_path,
+        scoring_toml=Path("config/scoring.toml"),
+        diff_threshold=threshold,
+    )
+    log.info("analyze done: %s", stats)
+    typer.echo(f"OK: {stats}")
 
 
 @app.command()
