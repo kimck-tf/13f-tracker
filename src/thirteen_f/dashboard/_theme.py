@@ -359,25 +359,60 @@ hr {{
     border-bottom: 1px dotted var(--border-line);
 }}
 
-/* === Streamlit chrome — header 유지 (사이드바 collapse 버튼 보존) === */
+/* === Streamlit chrome === */
 #MainMenu, footer {{ visibility: hidden !important; }}
 [data-testid="stToolbar"] {{ display: none !important; }}
 header[data-testid="stHeader"] {{
-    background: transparent !important;
-    /* height 줄이지 않음 — 사이드바 열기 버튼이 여기 있음 */
+    background: rgba(19, 24, 31, 0.85) !important;
+    border-bottom: 1px solid var(--border-line) !important;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    min-height: 2.75rem !important;
+    z-index: 99 !important;
 }}
-/* 사이드바 collapse 버튼 명시 보존 (Streamlit 버전별 selector 차이 대비) */
-[data-testid="collapsedControl"],
-[data-testid="stSidebarCollapsedControl"],
-[data-testid="stSidebarCollapseButton"] {{
-    display: block !important;
+
+/* === Sidebar — collapse 동작 무력화 ===
+ * Streamlit 1.57이 사이드바 닫힘을 `transform: translateX(-300px)`로 처리하는데,
+ * 그 안의 collapse 버튼도 함께 화면 밖으로 밀려나서 다시 열 방법이 없어짐.
+ * → transform: none 강제 + width 고정으로 항상 펼침 상태 유지.
+ * 사용자가 collapse 버튼을 눌러도 시각적으로 닫히지 않음 (의도된 fix).
+ */
+[data-testid="stSidebar"] {{
+    transform: none !important;
     visibility: visible !important;
-    z-index: 999 !important;
+    min-width: 16rem !important;
 }}
-[data-testid="collapsedControl"] svg,
-[data-testid="stSidebarCollapsedControl"] svg {{
+
+/* sidebar 안의 collapse 버튼은 항상 visible + 강조 (눌러도 안 닫히지만 버튼은 유지) */
+[data-testid="stSidebarCollapseButton"] {{
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}}
+[data-testid="stSidebarCollapseButton"] button,
+button[kind="headerNoPadding"],
+[data-testid="stBaseButton-headerNoPadding"] {{
+    background: var(--bg-elevated) !important;
+    border: 1px solid var(--border-line) !important;
+    border-radius: 4px !important;
     color: var(--text-secondary) !important;
-    fill: var(--text-secondary) !important;
+    padding: 4px 6px !important;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}}
+[data-testid="stSidebarCollapseButton"] button:hover {{
+    background: var(--accent-green) !important;
+    border-color: var(--accent-green) !important;
+    color: var(--bg-base) !important;
+}}
+[data-testid="stSidebarCollapseButton"] svg,
+button[kind="headerNoPadding"] svg {{
+    fill: currentColor !important;
+    color: inherit !important;
+}}
+[data-testid="stSidebarCollapseButton"] span,
+button[kind="headerNoPadding"] span {{
+    color: inherit !important;
+    font-size: 18px !important;
 }}
 
 /* Sidebar — section title 작게 */
