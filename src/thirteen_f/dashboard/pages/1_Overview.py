@@ -28,6 +28,9 @@ if not quarters:
 
 st.sidebar.markdown("### Quarter")
 selected = st.sidebar.selectbox("분기 선택", quarters, index=0, label_visibility="collapsed")
+# pandas Timestamp → date 변환 (isoformat이 시간 포함하면 fromisoformat 거부)
+if hasattr(selected, "date") and callable(selected.date):
+    selected = selected.date()
 
 
 @st.cache_data(ttl=600)

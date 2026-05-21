@@ -25,6 +25,8 @@ if not quarters:
 
 st.sidebar.markdown("### Quarter")
 quarter = st.sidebar.selectbox("Quarter", quarters, label_visibility="collapsed")
+if hasattr(quarter, "date") and callable(quarter.date):
+    quarter = quarter.date()
 
 st.sidebar.markdown("### Weights · 합=1.0")
 w_cons = st.sidebar.slider("Consensus", 0.0, 1.0, 0.30, 0.05)

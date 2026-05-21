@@ -40,6 +40,8 @@ quarters = conn.execute(
 ).fetchdf()["period_of_report"].tolist()
 st.sidebar.markdown("### Quarter")
 quarter = st.sidebar.selectbox("Quarter", quarters, label_visibility="collapsed")
+if hasattr(quarter, "date") and callable(quarter.date):
+    quarter = quarter.date()
 
 # Fetch weight_pct vectors
 placeholders = ",".join("?" for _ in ciks)

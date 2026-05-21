@@ -55,6 +55,8 @@ sel_q = st.sidebar.selectbox(
     "분기", quarters, label_visibility="collapsed",
     format_func=lambda d: str(d),
 )
+if hasattr(sel_q, "date") and callable(sel_q.date):
+    sel_q = sel_q.date()
 sel = hist[hist["period_of_report"] == sel_q]
 
 # 가중치 dict (ticker 누락 시 cusip 사용)
