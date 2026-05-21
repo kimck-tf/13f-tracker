@@ -142,7 +142,40 @@ def report(
     open_: bool = typer.Option(False, "--open", help="렌더 후 브라우저 열기"),
 ) -> None:
     """Phase 4: Quarto 분기 리포트 생성."""
-    typer.echo(f"report: not implemented yet. args={quarter=} {latest=} {open_=}")
+    import os as _os
+    import shutil
+    import subprocess
+    import webbrowser
+    from pathlib import Path
+
+    if shutil.which("quarto") is None:
+        typer.echo(
+            "Quarto CLI 미설치. Windows: winget install RStudio.Quarto", err=True
+        )
+        raise typer.Exit(2)
+
+    if not quarter and not latest:
+        typer.echo("Either --quarter or --latest must be set", err=True)
+        raise typer.Exit(1)
+
+    q_arg = "latest" if latest else quarter
+    out_dir = Path("reports/output") / (q_arg if q_arg != "latest" else "_latest")
+    cmd = [
+        "quarto", "render", "reports/quarto/",
+        "--output-dir", str(out_dir.absolute()),
+    ]
+    # Spec §8.2: quarter는 환경변수로 전달 (Quarto -P shortcode 호환성 문제 회피)
+    env = _os.environ.copy()
+    env["THIRTEEN_F_QUARTER"] = q_arg
+    typer.echo(f"Running: {' '.join(cmd)} (THIRTEEN_F_QUARTER={q_arg})")
+    result = subprocess.run(cmd, check=False, env=env)
+    if result.returncode != 0:
+        raise typer.Exit(result.returncode)
+
+    index_html = out_dir / "index.html"
+    typer.echo(f"Output: {index_html}")
+    if open_ and index_html.exists():
+        webbrowser.open(str(index_html.absolute()))
 
 
 @app.command()
