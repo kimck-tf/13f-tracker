@@ -34,6 +34,9 @@ data/raw/
 data/processed/
 data/cache/
 
+# Phase 5 — Web JSON dump (re-generate via `thirteen-f export`)
+src/thirteen_f/web/data/
+
 # Quarto / Streamlit
 _site/
 _book/
