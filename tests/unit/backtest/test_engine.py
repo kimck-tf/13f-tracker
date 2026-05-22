@@ -102,3 +102,41 @@ def test_engine_applies_cost(conn):
     no_cost_end = result_no_cost.nav_series[-1][1]
     with_cost_end = result_with_cost.nav_series[-1][1]
     assert with_cost_end < no_cost_end
+
+
+def test_engine_persists_quarterly_holdings(conn):
+    """Phase 5 A4: persist=True 시 분기 첫 영업일의 weights가 backtest_holdings에 저장."""
+    result = run_backtest(
+        strategy=FixedTwoTickerStrategy(),
+        start=date(2024, 1, 2),
+        end=date(2024, 12, 31),
+        conn=conn,
+        cost_bps=0,
+        persist=True,
+    )
+    # 분기 4개 (Q1~Q4) 만큼 snapshot 누적
+    assert len(result.holdings_log) >= 2
+    # DB에 저장됐는지 검증
+    rows = conn.execute(
+        """
+        SELECT DISTINCT rebalance_date FROM backtest_holdings
+        WHERE run_id = ? ORDER BY rebalance_date
+        """,
+        (result.run_id,),
+    ).fetchall()
+    assert len(rows) >= 2
+    # 같은 분기의 weights 합 ≈ 1.0
+    first_date = rows[0][0]
+    total_weight = conn.execute(
+        "SELECT SUM(weight) FROM backtest_holdings WHERE run_id = ? AND rebalance_date = ?",
+        (result.run_id, first_date),
+    ).fetchone()[0]
+    assert abs(total_weight - 1.0) < 1e-6
+    # 종목은 AAPL + MSFT 둘 다 등장
+    tickers = {
+        t for (t,) in conn.execute(
+            "SELECT DISTINCT ticker FROM backtest_holdings WHERE run_id = ?",
+            (result.run_id,),
+        ).fetchall()
+    }
+    assert tickers == {"AAPL", "MSFT"}

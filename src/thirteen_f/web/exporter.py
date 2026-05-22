@@ -6,10 +6,13 @@ schema is defined in :mod:`thirteen_f.web.schemas` (SSOT).
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from collections import defaultdict
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import duckdb
+
+from thirteen_f.core.dates import quarter_label
 
 from .schemas import Manager, Meta, QuarterEntry
 
@@ -244,5 +247,105 @@ def export_holdings(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
     )
     (out_dir / "holdings_unmapped.json").write_text(
         json.dumps(unmapped, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _resample_quarterly(
+    curves: list[tuple[date, float, float, int]],
+) -> tuple[list[float], list[float], list[float], list[float]]:
+    """daily curves [(date, nav, bench_nav, pos_cnt)] → 분기말 equity/drawdown/qrets/bench.
+
+    Quarter-end은 같은 분기 라벨의 마지막 영업일 (덮어쓰기로 보존).
+    """
+    by_q: dict[str, tuple[date, float, float]] = {}
+    for d, nav, bench, _ in curves:
+        q_lab = quarter_label(d)
+        by_q[q_lab] = (d, float(nav), float(bench))
+    sorted_q = sorted(by_q.keys())
+    equity = [by_q[q][1] for q in sorted_q]
+    bench = [by_q[q][2] for q in sorted_q]
+    # drawdown: 누적 최고 대비 하락률
+    peak = 0.0
+    dd: list[float] = []
+    for v in equity:
+        peak = max(peak, v)
+        dd.append((v - peak) / peak if peak > 0 else 0.0)
+    # quarterly return
+    qrets: list[float] = [0.0]
+    for j in range(1, len(equity)):
+        prev = equity[j - 1]
+        qrets.append((equity[j] / prev - 1.0) if prev > 0 else 0.0)
+    return equity, dd, qrets, bench
+
+
+def _group_holdings_by_date(rows: list[tuple[date, str, float]]) -> list[dict]:
+    """[(rebalance_date, ticker, weight)] → [{date, holdings:[{ticker, weight}, ...]}]."""
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for d, ticker, weight in rows:
+        grouped[d.isoformat()].append({"ticker": ticker, "weight": float(weight)})
+    return [{"date": k, "holdings": v} for k, v in sorted(grouped.items())]
+
+
+def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
+    """Export ``backtest.json`` — list of run records with equity/dd/qrets/holdingsLog/metrics."""
+    runs = conn.execute(
+        """
+        SELECT r.run_id, r.strategy_name, r.params_json, r.start_date, r.end_date,
+               m.total_return, m.cagr, m.sharpe, m.sortino, m.mdd, m.calmar,
+               m.win_rate_quarterly, m.bench_total_return, m.bench_cagr
+        FROM backtest_runs r
+        LEFT JOIN backtest_metrics m ON m.run_id = r.run_id
+        ORDER BY r.created_at DESC
+        """
+    ).fetchall()
+
+    payload: list[dict] = []
+    for (
+        run_id, name, params_json, _sd, _ed,
+        total_ret, m_cagr, m_sharpe, m_sortino, m_mdd, m_calmar,
+        m_winq, m_bench_total, m_bench_cagr,
+    ) in runs:
+        curves = conn.execute(
+            """
+            SELECT date, nav, benchmark_nav, position_count FROM backtest_curves
+            WHERE run_id = ? ORDER BY date
+            """,
+            (run_id,),
+        ).fetchall()
+        equity, dd, qrets, bench = _resample_quarterly(curves)
+
+        holdings_log = conn.execute(
+            """
+            SELECT rebalance_date, ticker, weight FROM backtest_holdings
+            WHERE run_id = ? ORDER BY rebalance_date, weight DESC
+            """,
+            (run_id,),
+        ).fetchall()
+        holdings_grouped = _group_holdings_by_date(holdings_log)
+
+        payload.append({
+            "run_id": run_id,
+            "name": name,
+            "params": json.loads(params_json) if params_json else {},
+            "equity": equity,
+            "dd": dd,
+            "qrets": qrets,
+            "benchEquity": bench,
+            "holdingsLog": holdings_grouped,
+            "metrics": {
+                "totalRet": total_ret,
+                "cagr": m_cagr,
+                "sharpe": m_sharpe,
+                "sortino": m_sortino,
+                "maxDD": m_mdd,
+                "calmar": m_calmar,
+                "hitRate": m_winq,
+                "benchTotalRet": m_bench_total,
+                "benchCagr": m_bench_cagr,
+            },
+        })
+    (out_dir / "backtest.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )

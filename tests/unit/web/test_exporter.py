@@ -12,6 +12,9 @@ from scripts.init_db import init_db
 from thirteen_f.collect.loader import upsert_filing, upsert_holdings, upsert_manager
 from thirteen_f.web.exporter import (
     _avatar_from_name,
+    _group_holdings_by_date,
+    _resample_quarterly,
+    export_backtest,
     export_holdings,
     export_managers,
     export_meta,
@@ -192,3 +195,78 @@ def test_export_holdings_splits_mapped_and_unmapped(conn, tmp_path: Path):
     total_unmapped = sum(len(v) for v in unmapped.values())
     coverage = total_mapped / (total_mapped + total_unmapped) if (total_mapped + total_unmapped) else 1.0
     assert coverage >= 0.5  # 2 mapped / 3 total = 66.7%
+
+
+def test_resample_quarterly_collapses_to_quarter_end():
+    curves = [
+        (date(2024, 1, 2), 100.0, 100.0, 0),
+        (date(2024, 1, 3), 101.0, 100.5, 0),
+        (date(2024, 3, 29), 110.0, 105.0, 0),
+        (date(2024, 4, 1), 110.5, 105.2, 0),
+        (date(2024, 6, 28), 120.0, 110.0, 0),
+    ]
+    equity, dd, qrets, bench = _resample_quarterly(curves)
+    assert equity == [110.0, 120.0]
+    assert bench == [105.0, 110.0]
+    # quarterly return: Q1=0(첫분기), Q2≈(120/110-1)
+    assert qrets[0] == 0.0
+    assert qrets[1] == pytest.approx(120.0 / 110.0 - 1.0)
+    # drawdown: 누적 최고 대비 (peaks가 단조증가라 모두 0)
+    assert all(v <= 0 for v in dd)
+
+
+def test_group_holdings_by_date_orders_and_serializes():
+    rows = [
+        (date(2024, 6, 30), "AAPL", 0.6),
+        (date(2024, 6, 30), "MSFT", 0.4),
+        (date(2024, 3, 31), "AAPL", 1.0),
+    ]
+    grouped = _group_holdings_by_date(rows)
+    assert len(grouped) == 2
+    assert grouped[0]["date"] == "2024-03-31"
+    assert grouped[1]["date"] == "2024-06-30"
+    assert grouped[1]["holdings"][0]["ticker"] in {"AAPL", "MSFT"}
+
+
+def test_export_backtest_writes_runs_with_holdings_and_metrics(conn, tmp_path: Path):
+    # backtest_runs + backtest_curves + backtest_metrics + backtest_holdings 직접 INSERT
+    conn.execute(
+        "INSERT INTO backtest_runs (run_id, strategy_name, params_json, start_date, end_date, "
+        "benchmark, cost_bps, created_at) VALUES ('r1','TestStrat','{\"k\":1}',"
+        "DATE '2024-01-02', DATE '2024-12-31','SPY',10.0, NOW())"
+    )
+    for d, nav, bn in [
+        (date(2024, 1, 2), 1_000_000.0, 1_000_000.0),
+        (date(2024, 3, 29), 1_050_000.0, 1_020_000.0),
+        (date(2024, 6, 28), 1_100_000.0, 1_030_000.0),
+    ]:
+        conn.execute(
+            "INSERT INTO backtest_curves VALUES ('r1', ?, ?, ?, 2)",
+            (d, nav, bn),
+        )
+    conn.execute(
+        "INSERT INTO backtest_metrics VALUES ('r1', 0.10, 0.12, 1.5, 1.8, -0.05, 2.4, 0.66, 0.03, 0.04)"
+    )
+    conn.execute(
+        "INSERT INTO backtest_holdings VALUES ('r1', DATE '2024-01-02','AAPL',0.5)"
+    )
+    conn.execute(
+        "INSERT INTO backtest_holdings VALUES ('r1', DATE '2024-01-02','MSFT',0.5)"
+    )
+
+    export_backtest(conn, tmp_path)
+    data = json.loads((tmp_path / "backtest.json").read_text(encoding="utf-8"))
+    assert len(data) == 1
+    run = data[0]
+    assert run["run_id"] == "r1"
+    assert run["name"] == "TestStrat"
+    assert run["params"] == {"k": 1}
+    assert len(run["equity"]) == 2  # 2 quarters
+    assert run["metrics"]["cagr"] == pytest.approx(0.12)
+    assert run["metrics"]["hitRate"] == pytest.approx(0.66)
+    assert run["metrics"]["benchTotalRet"] == pytest.approx(0.03)
+    # holdings log
+    assert len(run["holdingsLog"]) == 1
+    assert run["holdingsLog"][0]["date"] == "2024-01-02"
+    tickers = {h["ticker"] for h in run["holdingsLog"][0]["holdings"]}
+    assert tickers == {"AAPL", "MSFT"}

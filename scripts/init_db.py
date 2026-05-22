@@ -17,6 +17,7 @@ EXPECTED_TABLES = {
     "backtest_runs",
     "backtest_curves",
     "backtest_metrics",
+    "backtest_holdings",
 }
 
 SCHEMA_SQL = """
@@ -132,6 +133,14 @@ CREATE TABLE IF NOT EXISTS backtest_metrics (
     mdd DOUBLE, calmar DOUBLE,
     win_rate_quarterly DOUBLE,
     bench_total_return DOUBLE, bench_cagr DOUBLE
+);
+
+CREATE TABLE IF NOT EXISTS backtest_holdings (
+    run_id         VARCHAR NOT NULL REFERENCES backtest_runs(run_id),
+    rebalance_date DATE    NOT NULL,
+    ticker         VARCHAR NOT NULL,
+    weight         DOUBLE  NOT NULL,
+    PRIMARY KEY (run_id, rebalance_date, ticker)
 );
 """
 
