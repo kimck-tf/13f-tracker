@@ -1,5 +1,5 @@
-"""Backward-compatible shim — implementation moved to thirteen_f.web.queries (Phase 5 A1)."""
-from thirteen_f.web.queries import (
+"""Web frontend backend module — FastAPI server + DuckDB→JSON exporter."""
+from .queries import (
     backtest_curves_df,
     backtest_metrics_df,
     get_read_only_conn,
