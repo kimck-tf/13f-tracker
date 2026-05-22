@@ -605,6 +605,18 @@ async function bootstrapFromJson(baseUrl = "/data") {
   return META;
 }
 
+// Lazy daily price fetch — called per-ticker by StockScreen (Phase 5 C3).
+// Returns {date:[], close:[]} fallback so consumers can treat as iterable.
+async function fetchDailyPx(ticker, baseUrl = "/data") {
+  try {
+    const r = await fetch(`${baseUrl}/prices/${encodeURIComponent(ticker)}.json`);
+    if (!r.ok) return { date: [], close: [] };
+    return await r.json();
+  } catch {
+    return { date: [], close: [] };
+  }
+}
+
 // expose globals + bootstrap (loaded as a plain script tag)
 Object.assign(window, {
   QUARTERS, Q_LABELS, STOCKS, STOCK_MAP, MANAGERS, MGR_MAP, HOLDINGS,
@@ -613,5 +625,5 @@ Object.assign(window, {
   quarterActivity, tickerHolders, tickerCrowdedness, quarterSummary, spotlight,
   followStrategyEquity, runStrategy, pickByType,
   STRATEGY_TYPES, STRATEGY_TYPE_MAP, makeDefaultStrategyParams, strategyLabel,
-  bootstrapFromJson,
+  bootstrapFromJson, fetchDailyPx,
 });

@@ -40,6 +40,16 @@ function StocksListScreen({ quarter, setQuarter }) {
 
 function StockScreen({ ticker, quarter, setQuarter }) {
   const stock = STOCK_MAP[ticker];
+
+  // Phase 5 C3: daily price series lazy-loaded per ticker
+  // (kept on the screen for future chart upgrades; falls back to {date:[], close:[]})
+  const [pxDaily, setPxDaily] = React.useState({ date: [], close: [] });
+  React.useEffect(() => {
+    let alive = true;
+    fetchDailyPx(ticker).then(d => { if (alive) setPxDaily(d || { date: [], close: [] }); });
+    return () => { alive = false; };
+  }, [ticker]);
+
   if (!stock) {
     return (
       <>
