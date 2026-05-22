@@ -14,7 +14,6 @@ dependencies = [
     "yfinance>=0.2",
     "pandas-datareader>=0.10",
     "typer>=0.12",
-    "streamlit>=1.40",
     "plotly>=5.20",
     "rich>=13.0",
     "tenacity>=8.0",
