@@ -1,35 +1,30 @@
-// 13F Terminal — mock data layer
-// Hand-crafted holdings narrative across 8 quarters, real-feeling but illustrative.
+// 13F Terminal — data layer (Phase 5: hydrated by bootstrapFromJson)
+// Mock data removed; bootstrap fetches /data/*.json (produced by `thirteen-f export`).
+// See _claude_docs/FRONTEND_PARITY.md for which fields are exporter-owned vs derived.
 
-const QUARTERS = ["2024Q2", "2024Q3", "2024Q4", "2025Q1", "2025Q2", "2025Q3", "2025Q4", "2026Q1"];
-const Q_LABELS = ["Q2'24", "Q3'24", "Q4'24", "Q1'25", "Q2'25", "Q3'25", "Q4'25", "Q1'26"];
+let QUARTERS = [];      // ["2024Q2", ...] — exporter quarters.json[i].key
+let Q_LABELS = [];      // ["Q2'24", ...] — exporter quarters.json[i].label
+let STOCKS = [];        // [{t, n, s, i?, mc?, px:[N], yld?}] — exporter stocks.json
+let STOCK_MAP = {};     // {ticker: stock}
+let MANAGERS = [];      // [{id, name, firm, style, color, avatar, note}]
+let MGR_MAP = {};       // {id: manager}
+let HOLDINGS = {};      // {mgrId: {ticker: [shares_M_per_quarter]}}
+let HOLDINGS_UNMAPPED = {}; // {mgrId: {cusip: {name_of_issuer, shares:[...]}}}
+let BACKTESTS = [];     // [{run_id, name, equity, dd, qrets, holdingsLog, metrics}]
+let LLM_SUMMARY = {};   // {[period]: {headline, top_signals}}
+let META = {};          // {generated_at, latest_period, data_version, ...}
 
-// ─── Stocks (16) ────────────────────────────────────────────────────────────
-const STOCKS = [
-  { t: "AAPL",  n: "Apple Inc.",            s: "Tech",       i: "Hardware",     mc: 3100, px: [192, 220, 245, 235, 215, 230, 245, 252], yld: 0.5 },
-  { t: "MSFT",  n: "Microsoft",             s: "Tech",       i: "Software",     mc: 3050, px: [415, 430, 435, 408, 430, 445, 460, 478], yld: 0.7 },
-  { t: "GOOGL", n: "Alphabet",              s: "Tech",       i: "Internet",     mc: 2150, px: [175, 165, 192, 168, 175, 185, 195, 210], yld: 0   },
-  { t: "AMZN",  n: "Amazon",                s: "Tech",       i: "Internet",     mc: 1980, px: [186, 195, 218, 188, 205, 220, 226, 232], yld: 0   },
-  { t: "META",  n: "Meta Platforms",        s: "Tech",       i: "Internet",     mc: 1320, px: [502, 535, 595, 580, 620, 660, 690, 715], yld: 0.4 },
-  { t: "BAC",   n: "Bank of America",       s: "Financials", i: "Banks",        mc: 320,  px: [39, 40, 44, 42, 44, 46, 48, 49],         yld: 2.6 },
-  { t: "AXP",   n: "American Express",      s: "Financials", i: "Services",     mc: 215,  px: [235, 250, 295, 280, 296, 305, 310, 315], yld: 1.1 },
-  { t: "MCO",   n: "Moody's Corp",          s: "Financials", i: "Ratings",      mc: 88,   px: [430, 460, 475, 455, 470, 485, 490, 498], yld: 0.7 },
-  { t: "JPM",   n: "JPMorgan Chase",        s: "Financials", i: "Banks",        mc: 605,  px: [205, 210, 240, 230, 245, 255, 265, 272], yld: 2.2 },
-  { t: "CVX",   n: "Chevron",               s: "Energy",     i: "Oil & Gas",    mc: 285,  px: [156, 145, 152, 148, 158, 162, 170, 178], yld: 4.0 },
-  { t: "OXY",   n: "Occidental Petroleum",  s: "Energy",     i: "Oil & Gas",    mc: 55,   px: [60, 56, 50, 47, 51, 55, 58, 63],         yld: 1.5 },
-  { t: "EOG",   n: "EOG Resources",         s: "Energy",     i: "Oil & Gas",    mc: 80,   px: [132, 128, 125, 120, 128, 135, 142, 150], yld: 3.3 },
-  { t: "KO",    n: "Coca-Cola",             s: "Consumer",   i: "Beverages",    mc: 270,  px: [64, 67, 64, 68, 71, 73, 74, 75],         yld: 3.0 },
-  { t: "NKE",   n: "Nike",                  s: "Consumer",   i: "Apparel",      mc: 110,  px: [94, 81, 77, 72, 65, 68, 72, 78],         yld: 2.1 },
-  { t: "CMG",   n: "Chipotle Mexican Grill", s: "Consumer",  i: "Restaurants",  mc: 78,   px: [62, 55, 60, 52, 55, 58, 61, 63],         yld: 0   },
-  { t: "UNH",   n: "UnitedHealth",          s: "Healthcare", i: "Insurance",    mc: 475,  px: [495, 580, 510, 525, 545, 560, 575, 590], yld: 1.7 },
-];
-const STOCK_MAP = Object.fromEntries(STOCKS.map(s => [s.t, s]));
 const SECTOR_COLORS = {
   Tech: "#1d6dc8",
+  Technology: "#1d6dc8",
   Financials: "#6d28d9",
+  "Financial Services": "#6d28d9",
   Energy: "#b45309",
   Consumer: "#0e8a3b",
+  "Consumer Cyclical": "#0e8a3b",
+  "Consumer Defensive": "#0e8a3b",
   Healthcare: "#0e7490",
+  Other: "#475569",
 };
 
 // Daily-ish price series for charting (12 quarters, 65 weekly samples)
@@ -50,77 +45,7 @@ function buildWeeklyPrices(quarterly, drift = 0) {
   out.push(quarterly[quarterly.length - 1]);
   return out;
 }
-STOCKS.forEach(st => { st.pxWeekly = buildWeeklyPrices(st.px); });
-
-// ─── Managers (6) ───────────────────────────────────────────────────────────
-const MANAGERS = [
-  { id: "buffett",       name: "Warren Buffett",       firm: "Berkshire Hathaway",    aum: 285,  positions: 41, avatar: "WB", color: "#1d6dc8", note: "long-term value, financials + AAPL" },
-  { id: "burry",         name: "Michael Burry",        firm: "Scion Asset Mgmt",      aum: 0.18, positions: 5,  avatar: "MB", color: "#c8261e", note: "contrarian, short-cycle rotations" },
-  { id: "ackman",        name: "Bill Ackman",          firm: "Pershing Square",       aum: 13.5, positions: 6,  avatar: "BA", color: "#0e8a3b", note: "concentrated, long-duration holds" },
-  { id: "klarman",       name: "Seth Klarman",         firm: "Baupost Group",         aum: 7.2,  positions: 31, avatar: "SK", color: "#6d28d9", note: "deep value, special situations" },
-  { id: "tepper",        name: "David Tepper",         firm: "Appaloosa Management",  aum: 6.8,  positions: 28, avatar: "DT", color: "#0e7490", note: "opportunistic, macro-aware" },
-  { id: "druckenmiller", name: "Stanley Druckenmiller", firm: "Duquesne Family Office", aum: 3.2, positions: 35, avatar: "SD", color: "#b45309", note: "macro, fast-rotation" },
-];
-const MGR_MAP = Object.fromEntries(MANAGERS.map(m => [m.id, m]));
-
-// ─── Holdings: manager → ticker → 8 quarters of shares (in millions) ───────
-// 0 = not held; narrative-driven values that produce realistic actions
-const HOLDINGS = {
-  buffett: {
-    AAPL: [905, 905, 905, 400, 300, 300, 300, 300],   // big trim in Q1'25
-    BAC:  [1033, 1033, 1033, 1033, 800, 740, 740, 690],
-    AXP:  [152, 152, 152, 152, 152, 152, 152, 152],
-    KO:   [400, 400, 400, 400, 400, 400, 400, 400],
-    OXY:  [255, 255, 264, 264, 272, 280, 280, 280],
-    CVX:  [122, 122, 119, 119, 119, 119, 119, 119],
-    MCO:  [24.7, 24.7, 24.7, 24.7, 24.6, 24.6, 24.6, 24.6],
-    JPM:  [0, 0, 0, 0, 0, 0, 10, 14.5],
-    CMG:  [0, 0, 0, 0, 0, 0, 0, 0.9],
-  },
-  burry: {
-    JD:   [0, 0, 0, 0, 0, 0, 0, 0],
-    AMZN: [0, 0, 0, 0, 0, 0.25, 0.25, 0],
-    OXY:  [0, 0, 0, 0, 0, 0, 0.8, 1.2],
-    CVX:  [0, 0, 0, 0, 0, 0, 0.2, 0.4],
-    META: [0, 0, 0, 0, 0.05, 0.04, 0, 0],
-    UNH:  [0, 0, 0, 0, 0, 0, 0, 0.03],
-    EOG:  [0, 0, 0, 0, 0, 0, 0, 0.15],
-  },
-  ackman: {
-    CMG:  [29, 25, 25, 25, 22, 20, 18, 15],
-    NKE:  [0, 16.3, 16.3, 16.3, 13, 13, 13, 14.4],
-    GOOGL:[0, 0, 0, 4.4, 7.5, 10.9, 13.6, 15.5],
-    UNH:  [0, 0, 0, 0, 0, 0, 0, 1.5],
-    MCO:  [1.8, 1.8, 1.8, 1.8, 1.8, 1.8, 1.8, 1.8],
-  },
-  klarman: {
-    META: [3.0, 3.0, 3.0, 2.8, 2.8, 2.8, 2.8, 2.8],
-    BAC:  [0, 0, 5.1, 7.8, 7.8, 7.8, 7.8, 7.8],
-    CVX:  [4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0],
-    OXY:  [0, 0, 0, 0, 4.5, 4.5, 4.5, 4.5],
-    EOG:  [0, 0, 0, 0, 0, 2.9, 2.9, 2.9],
-    NKE:  [0, 0, 0, 0, 0, 0, 4.4, 4.4],
-    GOOGL:[1.8, 1.8, 1.8, 1.8, 1.8, 1.8, 1.8, 1.8],
-  },
-  tepper: {
-    META: [4.0, 4.0, 4.0, 4.0, 4.4, 5.0, 5.0, 5.5],
-    AMZN: [4.4, 4.4, 4.4, 4.0, 3.5, 3.5, 3.5, 3.5],
-    GOOGL:[4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0],
-    MSFT: [2.0, 2.0, 2.0, 2.0, 2.5, 2.5, 2.5, 2.5],
-    NKE:  [0, 0, 0, 0, 0, 0, 5.0, 8.0],
-    BAC:  [0, 0, 0, 0, 0, 0, 12, 15],
-    UNH:  [0, 0, 0, 0, 0, 0.6, 0.6, 0.6],
-  },
-  druckenmiller: {
-    META: [1.0, 1.2, 1.5, 1.5, 1.2, 1.0, 0, 0],
-    MSFT: [1.0, 1.0, 1.2, 1.2, 1.5, 1.5, 1.5, 1.5],
-    OXY:  [0, 0, 0, 0, 0, 0, 4.0, 4.0],
-    UNH:  [0, 0, 0, 0, 0.5, 0.5, 0.5, 0.5],
-    JPM:  [0, 0, 0, 0, 0, 1.0, 1.0, 1.5],
-    AAPL: [0, 0, 0, 0, 0.8, 0.8, 0.8, 0.8],
-    NVDA: [0, 0, 0, 0, 0, 0, 0, 0],
-  },
-};
+// pxWeekly is rebuilt inside bootstrapFromJson once STOCKS is hydrated.
 
 // ─── Derived helpers ────────────────────────────────────────────────────────
 // classify action between two quarters
@@ -627,11 +552,66 @@ function strategyLabel(s) {
   return `${s.type}(${summary})`;
 }
 
-// expose globals (loaded as a plain script tag)
+// =============================================================================
+// Bootstrap — fetch /data/*.json into module-level state (Phase 5 C1)
+// =============================================================================
+
+async function bootstrapFromJson(baseUrl = "/data") {
+  async function fetchJson(path, fallback) {
+    try {
+      const r = await fetch(`${baseUrl}/${path}`);
+      if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
+      return await r.json();
+    } catch (e) {
+      if (fallback !== undefined) return fallback;
+      throw e;
+    }
+  }
+
+  const [meta, quarters, managers, stocks, holdings, holdingsUnmapped, backtests, llm] = await Promise.all([
+    fetchJson("meta.json"),
+    fetchJson("quarters.json"),
+    fetchJson("managers.json"),
+    fetchJson("stocks.json"),
+    fetchJson("holdings.json"),
+    fetchJson("holdings_unmapped.json", {}),
+    fetchJson("backtest.json", []),
+    fetchJson("llm_summary.json", {}),
+  ]);
+
+  META = meta;
+  QUARTERS = quarters.map(q => q.key);
+  Q_LABELS = quarters.map(q => q.label);
+  STOCKS = stocks;
+  STOCK_MAP = Object.fromEntries(STOCKS.map(s => [s.t, s]));
+  STOCKS.forEach(st => {
+    if (Array.isArray(st.px) && st.px.length > 1) {
+      st.pxWeekly = buildWeeklyPrices(st.px);
+    } else {
+      st.pxWeekly = st.px ? st.px.slice() : [];
+    }
+  });
+  MANAGERS = managers;
+  MGR_MAP = Object.fromEntries(MANAGERS.map(m => [m.id, m]));
+  HOLDINGS = holdings;
+  HOLDINGS_UNMAPPED = holdingsUnmapped;
+  BACKTESTS = backtests;
+  LLM_SUMMARY = llm;
+
+  Object.assign(window, {
+    QUARTERS, Q_LABELS, STOCKS, STOCK_MAP, MANAGERS, MGR_MAP,
+    HOLDINGS, HOLDINGS_UNMAPPED, BACKTESTS, LLM_SUMMARY, META,
+  });
+  return META;
+}
+
+// expose globals + bootstrap (loaded as a plain script tag)
 Object.assign(window, {
-  QUARTERS, Q_LABELS, STOCKS, STOCK_MAP, MANAGERS, MGR_MAP, HOLDINGS, SECTOR_COLORS,
+  QUARTERS, Q_LABELS, STOCKS, STOCK_MAP, MANAGERS, MGR_MAP, HOLDINGS,
+  HOLDINGS_UNMAPPED, BACKTESTS, LLM_SUMMARY, META, SECTOR_COLORS,
   classifyAction, positionValue, managerTotal, managerPortfolio,
   quarterActivity, tickerHolders, tickerCrowdedness, quarterSummary, spotlight,
   followStrategyEquity, runStrategy, pickByType,
   STRATEGY_TYPES, STRATEGY_TYPE_MAP, makeDefaultStrategyParams, strategyLabel,
+  bootstrapFromJson,
 });
