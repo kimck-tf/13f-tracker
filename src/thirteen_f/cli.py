@@ -95,6 +95,7 @@ def backtest(
     from thirteen_f.backtest.engine import run_backtest
     from thirteen_f.backtest.strategies.consensus_top_k import ConsensusTopK
     from thirteen_f.backtest.strategies.conviction_follow import ConvictionFollow
+    from thirteen_f.backtest.strategies.multi_manager import MultiManager
     from thirteen_f.backtest.strategies.new_buy_only import NewBuyOnly
     from thirteen_f.backtest.strategies.score_top_k import ScoreTopK
     from thirteen_f.backtest.strategies.single_manager import SingleManagerClone
@@ -104,10 +105,21 @@ def backtest(
         "ConsensusTopK": lambda: ConsensusTopK(min_holders=3, top_k=20),
         "ConvictionFollow": lambda: ConvictionFollow(top_k=10),
         "NewBuyOnly": lambda: NewBuyOnly(min_holders=2, top_k=15),
+        "MultiManager": lambda: MultiManager(mgr_labels=["Buffett", "Ackman", "Tepper"], top_k=15),
     }
     if strategy.startswith("SingleManagerClone("):
         label = strategy.split("(")[1].rstrip(")")
         strat = SingleManagerClone(label=label)
+    elif strategy.startswith("MultiManager("):
+        # 형식: MultiManager(Buffett,Ackman,Tepper:15) 또는 MultiManager(Buffett,Ackman)
+        body = strategy.split("(", 1)[1].rstrip(")")
+        if ":" in body:
+            labels_str, top_str = body.split(":", 1)
+            top_k = int(top_str)
+        else:
+            labels_str, top_k = body, 15
+        labels = [s.strip() for s in labels_str.split(",") if s.strip()]
+        strat = MultiManager(mgr_labels=labels, top_k=top_k)
     elif strategy in registry:
         strat = registry[strategy]()
     else:
