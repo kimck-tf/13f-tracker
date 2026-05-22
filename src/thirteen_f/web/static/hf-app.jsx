@@ -43,17 +43,71 @@ const HF_TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "showWireLink": true
 }/*EDITMODE-END*/;
 
+// ─── Loading / error screens (Phase 5 C2) ─────────────────────────────────
+function LoadingScreen() {
+  return (
+    <div style={{ padding: 40, fontFamily: "Pretendard, sans-serif" }}>
+      <div className="mono muted" style={{ fontSize: 14, letterSpacing: 1 }}>
+        LOADING 13F TERMINAL…
+      </div>
+      <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+        fetching /data/*.json
+      </div>
+    </div>
+  );
+}
+
+function ErrorScreen({ error }) {
+  return (
+    <div style={{ padding: 40, fontFamily: "Pretendard, sans-serif" }}>
+      <h2 style={{ margin: 0 }}>데이터 로드 실패</h2>
+      <p className="muted" style={{ marginTop: 8 }}>
+        서버가 켜져 있고 <code>thirteen-f export</code>가 실행됐는지 확인하세요.
+      </p>
+      <pre
+        style={{
+          padding: 12,
+          background: "#f1f5f9",
+          borderRadius: 6,
+          marginTop: 12,
+          overflow: "auto",
+          fontSize: 12,
+        }}
+      >
+        {String(error && error.stack ? error.stack : error)}
+      </pre>
+    </div>
+  );
+}
+
 // ─── Main App ──────────────────────────────────────────────────────────────
 function App() {
   const route = useRoute();
   const [t, setTweak] = useTweaks(HF_TWEAK_DEFAULTS);
+  const [bootStatus, setBootStatus] = hUseState("loading"); // loading | ready | error
+  const [bootError, setBootError] = hUseState(null);
   // current quarter (global, overridable per-screen via param)
-  const [quarter, setQuarter] = hUseState(QUARTERS.length - 1); // default = latest
+  const [quarter, setQuarter] = hUseState(0);
+
+  hUseEffect(() => {
+    bootstrapFromJson()
+      .then(() => {
+        setQuarter(Math.max(0, QUARTERS.length - 1));
+        setBootStatus("ready");
+      })
+      .catch((e) => {
+        setBootError(e);
+        setBootStatus("error");
+      });
+  }, []);
 
   hUseEffect(() => {
     document.body.dataset.density = t.density;
     document.documentElement.style.setProperty("--accent", t.accent);
   }, [t.density, t.accent]);
+
+  if (bootStatus === "loading") return <LoadingScreen />;
+  if (bootStatus === "error") return <ErrorScreen error={bootError} />;
 
   const [root, sub] = route.path.split("/").filter(Boolean);
 
