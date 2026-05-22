@@ -4,6 +4,7 @@
 
 let QUARTERS = [];      // ["2024Q2", ...] — exporter quarters.json[i].key
 let Q_LABELS = [];      // ["Q2'24", ...] — exporter quarters.json[i].label
+let Q_DATES = [];       // ["2024-06-30", ...] — exporter quarters.json[i].date (ISO; /api/ask period에 사용)
 let STOCKS = [];        // [{t, n, s, i?, mc?, px:[N], yld?}] — exporter stocks.json
 let STOCK_MAP = {};     // {ticker: stock}
 let MANAGERS = [];      // [{id, name, firm, style, color, avatar, note}]
@@ -582,6 +583,7 @@ async function bootstrapFromJson(baseUrl = "/data") {
   META = meta;
   QUARTERS = quarters.map(q => q.key);
   Q_LABELS = quarters.map(q => q.label);
+  Q_DATES = quarters.map(q => q.date);
   STOCKS = stocks;
   STOCK_MAP = Object.fromEntries(STOCKS.map(s => [s.t, s]));
   STOCKS.forEach(st => {
@@ -599,7 +601,7 @@ async function bootstrapFromJson(baseUrl = "/data") {
   LLM_SUMMARY = llm;
 
   Object.assign(window, {
-    QUARTERS, Q_LABELS, STOCKS, STOCK_MAP, MANAGERS, MGR_MAP,
+    QUARTERS, Q_LABELS, Q_DATES, STOCKS, STOCK_MAP, MANAGERS, MGR_MAP,
     HOLDINGS, HOLDINGS_UNMAPPED, BACKTESTS, LLM_SUMMARY, META,
   });
   return META;
@@ -619,7 +621,7 @@ async function fetchDailyPx(ticker, baseUrl = "/data") {
 
 // expose globals + bootstrap (loaded as a plain script tag)
 Object.assign(window, {
-  QUARTERS, Q_LABELS, STOCKS, STOCK_MAP, MANAGERS, MGR_MAP, HOLDINGS,
+  QUARTERS, Q_LABELS, Q_DATES, STOCKS, STOCK_MAP, MANAGERS, MGR_MAP, HOLDINGS,
   HOLDINGS_UNMAPPED, BACKTESTS, LLM_SUMMARY, META, SECTOR_COLORS,
   classifyAction, positionValue, managerTotal, managerPortfolio,
   quarterActivity, tickerHolders, tickerCrowdedness, quarterSummary, spotlight,

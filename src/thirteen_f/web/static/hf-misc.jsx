@@ -14,42 +14,72 @@ const ASK_PROMPTS = [
 
 function AskScreen({ quarter }) {
   const [thread, setThread] = useState(() => initialThread(quarter));
+  const [pending, setPending] = useState(false);
   const inputRef = useRef(null);
 
-  function send(text) {
-    if (!text) return;
-    const responses = scriptedReply(text, quarter);
-    setThread(t => [
-      ...t,
-      { role: "user", text, ts: Date.now() },
-      ...responses.map(r => ({ role: "bot", ...r, ts: Date.now() + 1 })),
-    ]);
-    setTimeout(() => {
-      document.querySelector(".ask-thread")?.scrollTo({ top: 1e9, behavior: "smooth" });
-    }, 50);
+  // Phase 5 D4: scriptedReply 제거 → /api/ask fetch
+  async function send(text) {
+    if (!text || pending) return;
+    const period = Q_DATES[quarter];
+    setThread(t => [...t, { role: "user", text, ts: Date.now() }]);
+    setPending(true);
+    try {
+      const r = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: text, period }),
+      });
+      if (r.status === 503) {
+        setThread(t => [...t, { role: "bot", text: "LLM 비활성화 — GOOGLE_API_KEY 설정 후 재시도", ts: Date.now() }]);
+        return;
+      }
+      if (r.status === 429) {
+        setThread(t => [...t, { role: "bot", text: "분당 요청 한도(10) 초과. 잠시 후 재시도.", ts: Date.now() }]);
+        return;
+      }
+      if (!r.ok) {
+        setThread(t => [...t, { role: "bot", text: `오류: HTTP ${r.status}`, ts: Date.now() }]);
+        return;
+      }
+      const data = await r.json();
+      setThread(t => [...t, {
+        role: "bot",
+        text: data.text || "",
+        cards: data.cards || [],
+        ts: Date.now(),
+      }]);
+    } catch (e) {
+      setThread(t => [...t, { role: "bot", text: `네트워크 오류: ${e}`, ts: Date.now() }]);
+    } finally {
+      setPending(false);
+      setTimeout(() => {
+        document.querySelector(".ask-thread")?.scrollTo({ top: 1e9, behavior: "smooth" });
+      }, 50);
+    }
   }
 
   return (
     <>
       <Topbar
         crumbs={[{ label: "Ask" }]}
-        right={<Pill on>scripted demo</Pill>}
+        right={<Pill on={META.llm_available}>{META.llm_available ? "LLM connected" : "LLM offline"}</Pill>}
       />
       <div className="hf-pg ask">
         <div className="ask-shell">
           <div className="ask-thread">
             {thread.map((msg, i) => <AskMessage key={i} msg={msg} quarter={quarter} />)}
+            {pending && <div className="muted mono" style={{padding:"8px 0"}}>… thinking</div>}
           </div>
           <div className="ask-input-area">
             <div className="ask-suggests">
               <div className="ask-suggests-l mono">TRY</div>
               {ASK_PROMPTS.map(p => (
-                <button key={p.id} className="ask-suggest" onClick={() => send(p.text)}>{p.text}</button>
+                <button key={p.id} className="ask-suggest" disabled={pending} onClick={() => send(p.text)}>{p.text}</button>
               ))}
             </div>
             <form className="ask-input" onSubmit={e => { e.preventDefault(); const v = inputRef.current.value; inputRef.current.value = ""; send(v); }}>
-              <input ref={inputRef} className="ask-input-fld" placeholder="ask anything about the tracked filings…" />
-              <button type="submit" className="hf-btn primary">↩ Send</button>
+              <input ref={inputRef} className="ask-input-fld" placeholder="ask anything about the tracked filings…" disabled={pending} />
+              <button type="submit" className="hf-btn primary" disabled={pending}>↩ Send</button>
             </form>
           </div>
         </div>
