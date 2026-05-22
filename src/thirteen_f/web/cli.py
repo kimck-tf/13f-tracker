@@ -1,4 +1,4 @@
-"""CLI helpers for web/ — DuckDB → JSON dump orchestrator."""
+"""CLI helpers for web/ — DuckDB → JSON dump orchestrator + uvicorn launcher."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,6 +7,21 @@ import duckdb
 import typer
 
 from . import exporter
+
+
+def do_serve(host: str, port: int, reload: bool) -> None:
+    """Launch uvicorn serving ``thirteen_f.web.server:app`` at ``host:port``.
+
+    Module string (not the app object) is required for ``reload=True`` to work.
+    """
+    import uvicorn  # lazy import
+
+    uvicorn.run(
+        "thirteen_f.web.server:app",
+        host=host,
+        port=port,
+        reload=reload,
+    )
 
 
 def do_export(out: Path, llm_available: bool, db_path: str) -> None:
