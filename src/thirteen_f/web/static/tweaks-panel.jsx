@@ -157,32 +157,43 @@ const __TWEAKS_STYLE = `
 `;
 
 // ── useTweaks ───────────────────────────────────────────────────────────────
-// Single source of truth for tweak values. setTweak persists via the host
-// (__edit_mode_set_keys → host rewrites the EDITMODE block on disk).
+// Phase 5 C5: host protocol(postMessage) 제거. localStorage('hf-tweaks')에 직접 persist.
+// 외부 host(omelette/deck-stage) 의존성을 모두 끊고 standalone production SPA로 동작.
 function useTweaks(defaults) {
-  const [values, setValues] = React.useState(defaults);
-  // Accepts either setTweak('key', value) or setTweak({ key: value, ... }) so a
-  // useState-style call doesn't write a "[object Object]" key into the persisted
-  // JSON block.
+  const [values, setValues] = React.useState(() => {
+    try {
+      const stored = localStorage.getItem('hf-tweaks');
+      return stored ? { ...defaults, ...JSON.parse(stored) } : defaults;
+    } catch {
+      return defaults;
+    }
+  });
+  // Accepts setTweak('key', value) or setTweak({ key: value, ... }) — matches
+  // the prior signature so existing call-sites stay unchanged.
   const setTweak = React.useCallback((keyOrEdits, val) => {
     const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
       ? keyOrEdits : { [keyOrEdits]: val };
-    setValues((prev) => ({ ...prev, ...edits }));
-    window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
-    // Same-window signal so in-page listeners (deck-stage rail thumbnails)
-    // can react — the parent message only reaches the host, not peers.
-    window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
+    setValues((prev) => {
+      const next = { ...prev, ...edits };
+      try { localStorage.setItem('hf-tweaks', JSON.stringify(next)); } catch {}
+      return next;
+    });
   }, []);
   return [values, setTweak];
 }
 
 // ── TweaksPanel ─────────────────────────────────────────────────────────────
-// Floating shell. Registers the protocol listener BEFORE announcing
-// availability — if the announce ran first, the host's activate could land
-// before our handler exists and the toolbar toggle would silently no-op.
-// The close button posts __edit_mode_dismissed so the host's toolbar toggle
-// flips off in lockstep; the host echoes __deactivate_edit_mode back which
-// is what actually hides the panel.
+// Phase 5 C5: host protocol (postMessage) 전체 제거. button 클릭으로 자체 토글하는
+// floating FAB + draggable panel. Drag/clamp/resize 동작은 유지 (UX 그대로).
+const __TWEAKS_FAB_STYLE = `
+  .twk-fab{position:fixed;right:16px;bottom:16px;z-index:2147483646;
+    width:40px;height:40px;border-radius:999px;
+    border:1px solid rgba(0,0,0,.1);background:rgba(255,255,255,.95);
+    box-shadow:0 4px 12px rgba(0,0,0,.15);cursor:pointer;
+    font-size:18px;color:#29261b;display:flex;align-items:center;justify-content:center}
+  .twk-fab:hover{background:#fff;box-shadow:0 6px 16px rgba(0,0,0,.18)}
+`;
+
 function TweaksPanel({ title = 'Tweaks', children }) {
   const [open, setOpen] = React.useState(false);
   const dragRef = React.useRef(null);
@@ -215,22 +226,6 @@ function TweaksPanel({ title = 'Tweaks', children }) {
     return () => ro.disconnect();
   }, [open, clampToViewport]);
 
-  React.useEffect(() => {
-    const onMsg = (e) => {
-      const t = e?.data?.type;
-      if (t === '__activate_edit_mode') setOpen(true);
-      else if (t === '__deactivate_edit_mode') setOpen(false);
-    };
-    window.addEventListener('message', onMsg);
-    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
-    return () => window.removeEventListener('message', onMsg);
-  }, []);
-
-  const dismiss = () => {
-    setOpen(false);
-    window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
-  };
-
   const onDragStart = (e) => {
     const panel = dragRef.current;
     if (!panel) return;
@@ -253,17 +248,24 @@ function TweaksPanel({ title = 'Tweaks', children }) {
     window.addEventListener('mouseup', up);
   };
 
-  if (!open) return null;
+  if (!open) {
+    return (
+      <>
+        <style>{__TWEAKS_FAB_STYLE}</style>
+        <button className="twk-fab" aria-label="Open tweaks" onClick={() => setOpen(true)}>⚙</button>
+      </>
+    );
+  }
   return (
     <>
-      <style>{__TWEAKS_STYLE}</style>
-      <div ref={dragRef} className="twk-panel" data-omelette-chrome=""
+      <style>{__TWEAKS_STYLE}{__TWEAKS_FAB_STYLE}</style>
+      <div ref={dragRef} className="twk-panel"
            style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
         <div className="twk-hd" onMouseDown={onDragStart}>
           <b>{title}</b>
           <button className="twk-x" aria-label="Close tweaks"
                   onMouseDown={(e) => e.stopPropagation()}
-                  onClick={dismiss}>✕</button>
+                  onClick={() => setOpen(false)}>✕</button>
         </div>
         <div className="twk-body">
           {children}

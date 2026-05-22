@@ -36,12 +36,11 @@ function navigate(path, params) {
   window.location.hash = hash;
 }
 
-// ─── Tweak defaults (theme/font/density) ──────────────────────────────────
-const HF_TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "density": "regular",
-  "accent": "#1d6dc8",
-  "showWireLink": true
-}/*EDITMODE-END*/;
+// ─── Tweak defaults (theme/density) ───────────────────────────────────────
+// Phase 5 C5: host protocol 제거 후 EDITMODE 마커 불필요. density만 유지.
+const HF_TWEAK_DEFAULTS = {
+  density: "regular",
+};
 
 // ─── Loading / error screens (Phase 5 C2) ─────────────────────────────────
 function LoadingScreen() {
@@ -103,8 +102,7 @@ function App() {
 
   hUseEffect(() => {
     document.body.dataset.density = t.density;
-    document.documentElement.style.setProperty("--accent", t.accent);
-  }, [t.density, t.accent]);
+  }, [t.density]);
 
   if (bootStatus === "loading") return <LoadingScreen />;
   if (bootStatus === "error") return <ErrorScreen error={bootError} />;
@@ -120,10 +118,6 @@ function App() {
       <TweaksPanel>
         <TweakSection label="Layout" />
         <TweakRadio label="Density" value={t.density} options={["compact", "regular", "cozy"]} onChange={v => setTweak("density", v)} />
-        <TweakSection label="Accent" />
-        <TweakColor label="Accent" value={t.accent} options={["#1d6dc8", "#0e8a3b", "#7c3aed", "#0a0d14"]} onChange={v => setTweak("accent", v)} />
-        <TweakSection label="More" />
-        <TweakButton label="Open wireframes" onClick={() => window.open("13F Tracker Wireframes.html", "_blank")} />
       </TweaksPanel>
     </div>
   );
