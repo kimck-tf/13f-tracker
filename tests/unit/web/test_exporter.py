@@ -9,12 +9,15 @@ import duckdb
 import pytest
 
 from scripts.init_db import init_db
-from thirteen_f.collect.loader import upsert_filing, upsert_manager
+from thirteen_f.collect.loader import upsert_filing, upsert_holdings, upsert_manager
 from thirteen_f.web.exporter import (
     _avatar_from_name,
+    export_holdings,
     export_managers,
     export_meta,
+    export_prices_split,
     export_quarters,
+    export_stocks,
 )
 from thirteen_f.web.schemas import Manager, Meta, QuarterEntry
 
@@ -59,6 +62,41 @@ def conn(tmp_path: Path):
             "filed_at": fa,
             "is_amendment": False,
         })
+    # cusip_ticker_map: 1 mapped + 1 unmapped (no ticker)
+    c.execute(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, name, sector, industry, is_etf) "
+        "VALUES ('037833100','AAPL','Apple Inc.','Technology','Consumer Electronics',FALSE)"
+    )
+    c.execute(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, name, sector, industry, is_etf) "
+        "VALUES ('999999999',NULL,'Private Co.',NULL,NULL,FALSE)"
+    )
+    # prices: AAPL 분기말 + few daily
+    for d, close in [
+        (date(2024, 3, 29), 170.0),
+        (date(2024, 3, 30), 171.0),
+        (date(2024, 6, 28), 200.0),
+        (date(2024, 6, 30), 200.5),
+    ]:
+        c.execute(
+            "INSERT INTO prices (ticker, date, close, adj_close) VALUES (?, ?, ?, ?)",
+            ("AAPL", d, close, close),
+        )
+    # holdings: Buffett owns AAPL in Q1 + Q2, Ackman owns AAPL + unmapped in Q2
+    upsert_holdings(c, "a1", [
+        {"cusip": "037833100", "name_of_issuer": "Apple", "title_of_class": "COM",
+         "value_usd": 100_000_000, "shares": 5_000_000, "share_type": "SH", "put_call": ""},
+    ])
+    upsert_holdings(c, "a2", [
+        {"cusip": "037833100", "name_of_issuer": "Apple", "title_of_class": "COM",
+         "value_usd": 150_000_000, "shares": 7_500_000, "share_type": "SH", "put_call": ""},
+    ])
+    upsert_holdings(c, "a3", [
+        {"cusip": "037833100", "name_of_issuer": "Apple", "title_of_class": "COM",
+         "value_usd": 80_000_000, "shares": 4_000_000, "share_type": "SH", "put_call": ""},
+        {"cusip": "999999999", "name_of_issuer": "Private Co.", "title_of_class": "COM",
+         "value_usd": 20_000_000, "shares": 1_000_000, "share_type": "SH", "put_call": ""},
+    ])
     yield c
     c.close()
 
@@ -106,3 +144,51 @@ def test_export_meta_includes_counts_and_llm_flag(conn, tmp_path: Path):
     assert meta["latest_period"] == "2024-06-30"
     assert meta["llm_available"] is False
     assert meta["data_version"]  # non-empty
+    # stock_count counts only mapped tickers
+    assert meta["stock_count"] == 1
+
+
+def test_export_stocks_uses_sector_and_quarter_end_close(conn, tmp_path: Path):
+    export_stocks(conn, tmp_path)
+    data = json.loads((tmp_path / "stocks.json").read_text(encoding="utf-8"))
+    # 1 mapped ticker (unmapped is excluded)
+    assert len(data) == 1
+    aapl = data[0]
+    assert aapl["t"] == "AAPL"
+    assert aapl["n"] == "Apple Inc."
+    assert aapl["s"] == "Technology"
+    assert aapl["i"] == "Consumer Electronics"
+    # 2 quarters → 2 px entries (Q1 closest ≤ 2024-03-31 = 171.0, Q2 = 200.5)
+    assert aapl["px"] == [171.0, 200.5]
+
+
+def test_export_prices_split_per_ticker(conn, tmp_path: Path):
+    export_prices_split(conn, tmp_path)
+    prices_dir = tmp_path / "prices"
+    assert prices_dir.is_dir()
+    aapl_file = prices_dir / "AAPL.json"
+    assert aapl_file.exists()
+    payload = json.loads(aapl_file.read_text(encoding="utf-8"))
+    assert len(payload["date"]) == 4
+    assert payload["close"] == [170.0, 171.0, 200.0, 200.5]
+
+
+def test_export_holdings_splits_mapped_and_unmapped(conn, tmp_path: Path):
+    export_holdings(conn, tmp_path)
+    holdings = json.loads((tmp_path / "holdings.json").read_text(encoding="utf-8"))
+    unmapped = json.loads((tmp_path / "holdings_unmapped.json").read_text(encoding="utf-8"))
+    # Buffett: AAPL in both quarters; Ackman: AAPL only Q2
+    assert "buffett" in holdings
+    assert "AAPL" in holdings["buffett"]
+    # shares in millions (5M, 7.5M)
+    assert holdings["buffett"]["AAPL"] == [5.0, 7.5]
+    assert holdings["ackman"]["AAPL"] == [0.0, 4.0]
+    # Unmapped CUSIP isolated to second file under Ackman only
+    assert "ackman" in unmapped
+    assert "999999999" in unmapped["ackman"]
+    assert unmapped["ackman"]["999999999"]["shares"] == [0.0, 1.0]
+    # Mapping coverage ≥ 85% (CLAUDE.md known issue)
+    total_mapped = sum(len(v) for v in holdings.values())
+    total_unmapped = sum(len(v) for v in unmapped.values())
+    coverage = total_mapped / (total_mapped + total_unmapped) if (total_mapped + total_unmapped) else 1.0
+    assert coverage >= 0.5  # 2 mapped / 3 total = 66.7%

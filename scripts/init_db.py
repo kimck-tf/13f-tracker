@@ -59,6 +59,8 @@ CREATE TABLE IF NOT EXISTS cusip_ticker_map (
     ticker     VARCHAR,
     figi       VARCHAR,
     name       VARCHAR,
+    sector     VARCHAR DEFAULT '',
+    industry   VARCHAR DEFAULT '',
     is_etf     BOOLEAN,
     updated_at TIMESTAMP DEFAULT now()
 );
@@ -138,6 +140,8 @@ CREATE TABLE IF NOT EXISTS backtest_metrics (
 MIGRATIONS = [
     "ALTER TABLE managers ADD COLUMN IF NOT EXISTS color VARCHAR DEFAULT ''",
     "ALTER TABLE managers ADD COLUMN IF NOT EXISTS notes VARCHAR DEFAULT ''",
+    "ALTER TABLE cusip_ticker_map ADD COLUMN IF NOT EXISTS sector VARCHAR DEFAULT ''",
+    "ALTER TABLE cusip_ticker_map ADD COLUMN IF NOT EXISTS industry VARCHAR DEFAULT ''",
 ]
 
 
