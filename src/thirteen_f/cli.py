@@ -138,20 +138,6 @@ def backtest(
 
 
 @app.command()
-def dashboard() -> None:
-    """Phase 4: Streamlit 대시보드 실행 (Deprecated — Chunk E에서 제거 예정)."""
-    import subprocess
-    from pathlib import Path
-
-    typer.echo(
-        "[deprecated] 'dashboard' 명령은 곧 제거됩니다. 'thirteen-f serve' 사용 권장.",
-        err=True,
-    )
-    app_path = Path(__file__).parent / "dashboard" / "app.py"
-    subprocess.run(["streamlit", "run", str(app_path)], check=False)
-
-
-@app.command()
 def serve(
     host: str = typer.Option("127.0.0.1", help="Bind host"),
     port: int = typer.Option(8765, help="Bind port"),

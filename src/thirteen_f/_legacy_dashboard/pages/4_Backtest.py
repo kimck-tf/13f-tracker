@@ -4,9 +4,9 @@ from __future__ import annotations
 import streamlit as st
 
 from thirteen_f.core.config import load_settings
-from thirteen_f.dashboard._theme import apply_theme, kpi_card, section, sidebar_toggle, status_bar
-from thirteen_f.dashboard.charts import cumulative_curve, drawdown_chart
-from thirteen_f.dashboard.tables import (
+from thirteen_f._legacy_dashboard._theme import apply_theme, kpi_card, section, sidebar_toggle, status_bar
+from thirteen_f._legacy_dashboard.charts import cumulative_curve, drawdown_chart
+from thirteen_f._legacy_dashboard.tables import (
     backtest_curves_df,
     backtest_metrics_df,
     get_read_only_conn,

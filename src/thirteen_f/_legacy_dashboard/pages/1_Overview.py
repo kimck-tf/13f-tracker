@@ -5,9 +5,9 @@ import pandas as pd
 import streamlit as st
 
 from thirteen_f.core.config import load_settings
-from thirteen_f.dashboard._theme import apply_theme, section, sidebar_toggle, status_bar
-from thirteen_f.dashboard.charts import change_waterfall, consensus_heatmap
-from thirteen_f.dashboard.tables import get_read_only_conn
+from thirteen_f._legacy_dashboard._theme import apply_theme, section, sidebar_toggle, status_bar
+from thirteen_f._legacy_dashboard.charts import change_waterfall, consensus_heatmap
+from thirteen_f._legacy_dashboard.tables import get_read_only_conn
 
 st.set_page_config(page_title="Overview · 13F", page_icon="◆", layout="wide")
 apply_theme()

@@ -5,7 +5,7 @@ title: "Overview"
 ```{python}
 #| echo: false
 from _common import get_conn, resolve_quarter
-from thirteen_f.dashboard.charts import change_waterfall, consensus_heatmap
+from thirteen_f._legacy_dashboard.charts import change_waterfall, consensus_heatmap
 
 conn = get_conn()
 period = resolve_quarter(conn)  # THIRTEEN_F_QUARTER 환경변수 사용

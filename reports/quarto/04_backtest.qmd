@@ -5,8 +5,8 @@ title: "Backtest Comparison"
 ```{python}
 #| echo: false
 from _common import get_conn
-from thirteen_f.dashboard.charts import cumulative_curve, drawdown_chart
-from thirteen_f.dashboard.tables import backtest_curves_df, backtest_metrics_df
+from thirteen_f._legacy_dashboard.charts import cumulative_curve, drawdown_chart
+from thirteen_f.web.queries import backtest_curves_df, backtest_metrics_df
 
 conn = get_conn()
 metrics = backtest_metrics_df(conn)
