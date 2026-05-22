@@ -27,7 +27,9 @@ CREATE TABLE IF NOT EXISTS managers (
     fund VARCHAR,
     style VARCHAR,
     active_since INTEGER,
-    cloning_score_weight DOUBLE DEFAULT 1.0
+    cloning_score_weight DOUBLE DEFAULT 1.0,
+    color VARCHAR DEFAULT '',
+    notes VARCHAR DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS filings (
@@ -132,12 +134,21 @@ CREATE TABLE IF NOT EXISTS backtest_metrics (
 """
 
 
+# Idempotent in-place migrations for DBs created before Phase 5 (Plan A2/A3).
+MIGRATIONS = [
+    "ALTER TABLE managers ADD COLUMN IF NOT EXISTS color VARCHAR DEFAULT ''",
+    "ALTER TABLE managers ADD COLUMN IF NOT EXISTS notes VARCHAR DEFAULT ''",
+]
+
+
 def init_db(db_path: Path | str) -> None:
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = duckdb.connect(str(db_path))
     try:
         conn.execute(SCHEMA_SQL)
+        for sql in MIGRATIONS:
+            conn.execute(sql)
     finally:
         conn.close()
 

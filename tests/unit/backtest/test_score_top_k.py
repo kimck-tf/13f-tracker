@@ -38,7 +38,10 @@ def conn(tmp_path):
         ],
     )
     # 가짜 filings (lookahead 검증용): 모두 filed_at=2024-05-15
-    c.execute("INSERT INTO managers VALUES ('c1','Test','t','f','value',2020,1.0)")
+    c.execute(
+        "INSERT INTO managers (cik, name, label, fund, style, active_since, cloning_score_weight) "
+        "VALUES ('c1','Test','t','f','value',2020,1.0)"
+    )
     c.execute(
         "INSERT INTO filings VALUES ('acc1','c1','13F-HR',DATE '2024-03-31',DATE '2024-05-15',FALSE,NULL)"
     )

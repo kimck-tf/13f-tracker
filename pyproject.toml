@@ -19,6 +19,7 @@ dependencies = [
     "rich>=13.0",
     "tenacity>=8.0",
     "jupyter>=1.0",
+    "pydantic>=2.5",
 ]
 
 [project.scripts]

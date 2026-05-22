@@ -12,16 +12,20 @@ logger = logging.getLogger(__name__)
 def upsert_manager(conn: duckdb.DuckDBPyConnection, m: dict[str, Any]) -> None:
     conn.execute(
         """
-        INSERT INTO managers (cik, name, label, fund, style, active_since, cloning_score_weight)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO managers (cik, name, label, fund, style, active_since,
+                              cloning_score_weight, color, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (cik) DO UPDATE SET
             name=excluded.name, label=excluded.label, fund=excluded.fund,
             style=excluded.style, active_since=excluded.active_since,
-            cloning_score_weight=excluded.cloning_score_weight
+            cloning_score_weight=excluded.cloning_score_weight,
+            color=excluded.color, notes=excluded.notes
         """,
         (
             m["cik"], m["name"], m.get("label"), m.get("fund"),
-            m.get("style"), m.get("active_since"), m.get("cloning_score_weight", 1.0),
+            m.get("style"), m.get("active_since"),
+            m.get("cloning_score_weight", 1.0),
+            m.get("color", ""), m.get("notes", ""),
         ),
     )
 

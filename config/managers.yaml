@@ -3,6 +3,7 @@
   cik: 0001067983
   fund: Berkshire Hathaway
   style: value
+  color: '#1d6dc8'
   active_since: 1996
   notes: 13F 추종 원조
   cloning_score_weight: 1.0
@@ -11,6 +12,7 @@
   cik: '0001061165'
   fund: Baupost Group
   style: value
+  color: '#1d6dc8'
   active_since: 2000
   notes: 디스트레스/가치, 매우 신중한 매수
   cloning_score_weight: 1.0
@@ -19,6 +21,7 @@
   cik: '0001112520'
   fund: Akre Capital Management
   style: value
+  color: '#1d6dc8'
   active_since: 2009
   notes: 퀄리티 컴파운더, 20여 종목 집중
   cloning_score_weight: 1.0
@@ -27,6 +30,7 @@
   cik: 0001709323
   fund: Himalaya Capital Management
   style: value
+  color: '#1d6dc8'
   active_since: 2017
   notes: Munger 추천, 동아시아+US
   cloning_score_weight: 1.0
@@ -35,6 +39,7 @@
   cik: '0001173334'
   fund: Dalal Street LLC
   style: value
+  color: '#1d6dc8'
   active_since: 2002
   notes: Buffett 추종, 10여 종목
   cloning_score_weight: 1.0
@@ -43,6 +48,7 @@
   cik: 0001079114
   fund: Gotham Asset Management
   style: value
+  color: '#1d6dc8'
   active_since: 2008
   notes: Magic Formula, 다종목
   cloning_score_weight: 0.8
@@ -51,6 +57,7 @@
   cik: '0000813917'
   fund: Harris Associates L P
   style: value
+  color: '#1d6dc8'
   active_since: 2011
   notes: Oakmark 대형주 가치
   cloning_score_weight: 0.9
@@ -59,6 +66,7 @@
   cik: 0001336528
   fund: Pershing Square Capital Management
   style: activist
+  color: '#0e8a3b'
   active_since: 2004
   notes: 8~10 종목 초집중
   cloning_score_weight: 1.0
@@ -67,6 +75,7 @@
   cik: '0001040273'
   fund: Third Point LLC
   style: activist
+  color: '#0e8a3b'
   active_since: 2011
   notes: 액티비스트 + 이벤트
   cloning_score_weight: 0.9
@@ -75,6 +84,7 @@
   cik: 0001385613
   fund: Greenlight Capital
   style: activist
+  color: '#0e8a3b'
   active_since: 2004
   notes: 롱숏 가치 (13F는 롱사이드만)
   cloning_score_weight: 0.9
@@ -83,6 +93,7 @@
   cik: 0000921669
   fund: Icahn Capital LP
   style: activist
+  color: '#0e8a3b'
   active_since: 1995
   notes: 클래식 액티비스트
   cloning_score_weight: 0.8
@@ -91,6 +102,7 @@
   cik: '0001656456'
   fund: Appaloosa Management
   style: macro
+  color: '#b45309'
   active_since: 2011
   notes: 매크로/디스트레스, 변동 큼
   cloning_score_weight: 0.9
@@ -99,6 +111,7 @@
   cik: '0001536411'
   fund: Duquesne Family Office
   style: macro
+  color: '#b45309'
   active_since: 2011
   notes: 매크로 거장 (패밀리오피스도 13F 의무)
   cloning_score_weight: 1.0
@@ -107,6 +120,7 @@
   cik: 0001649339
   fund: Scion Asset Management
   style: macro
+  color: '#b45309'
   active_since: 2013
   notes: 컨트래리언, 옵션/숏 비중 높아 13F는 일부만
   cloning_score_weight: 0.6
@@ -115,6 +129,7 @@
   cik: 0001350694
   fund: Bridgewater Associates
   style: macro
+  color: '#b45309'
   active_since: 2011
   notes: ETF 비중 높음 — 매크로 시그널 위주 해석
   cloning_score_weight: 0.5
