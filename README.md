@@ -6,9 +6,10 @@
 
 - **수집**: SEC EDGAR에서 분기별 13F-HR 공시 직접 파싱 (httpx + lxml)
 - **분석**: 분기 간 변화·conviction·continuity·consensus 4 시그널 + 가중 종합 점수
-- **백테스트**: 6 전략 (SingleManagerClone, ConsensusTopK, ScoreTopK, ConvictionFollow, NewBuyOnly, Ensemble) + Lookahead-free 검증
-- **시각화**: Streamlit 5 페이지 대시보드 (Overview / Manager / Signals / Backtest / Compare)
+- **백테스트**: 7 전략 (SingleManagerClone / ConsensusTopK / ScoreTopK / ConvictionFollow / NewBuyOnly / Ensemble / **MultiManager**) + Lookahead-safe 검증 + 분기 holdings snapshot
+- **시각화**: 9페이지 정적 SPA (Home / Managers / Compare / Stocks / Changes / Consensus / Backtest / Builder / Ask) — React 18 + Pretendard, FastAPI 정적 서버
 - **리포트**: Quarto 6 챕터 단일 HTML (선택: Gemini LLM 분기 헤드라인 요약 + Top 10 시그널 해석)
+- **Ask LLM**: `/api/ask` 엔드포인트 (Gemini chat with structured cards, rate limit 10/min)
 
 ## Tracked Managers (15)
 
@@ -38,7 +39,23 @@ uv run python scripts/init_db.py
 # 4) (선택) Quarto CLI 설치 — 분기 HTML 리포트용
 #   Windows:  winget install RStudio.Quarto
 #   macOS:    brew install --cask quarto
-#   미설치 시 dashboard / backtest 는 정상, report 만 안내 후 종료
+#   미설치 시 serve / backtest 는 정상, report 만 안내 후 종료
+```
+
+## Run the App (Phase 5)
+
+```bash
+# 1) 전체 파이프라인 한 번 (collect → analyze → backtest → export → report)
+uv run thirteen-f update
+
+# 2) (선택) cusip_ticker_map.sector backfill — 신규 ticker 추가 후 1회
+uv run python scripts/supplement_sector.py
+
+# 3) 정적 서버 부팅 — http://localhost:8765
+uv run thirteen-f serve
+
+# JSON dump만 다시 만들고 싶을 때 (DB는 그대로)
+uv run thirteen-f export
 ```
 
 ## Quick Start
@@ -67,14 +84,15 @@ print(c.execute('''
 
 ## Progress Status
 
-- [x] Phase 0 — 환경 셋업, DuckDB 11 테이블, CLI scaffolding
+- [x] Phase 0 — 환경 셋업, DuckDB 12 테이블 (Phase 5: +`backtest_holdings`), CLI scaffolding
 - [x] Phase 1 — EDGAR 수집 (15명 / 110 filings / 10,867 holdings / 1,584 price tickers)
 - [x] Phase 2 — 4 시그널 + 종합 점수 (10,759 signals / 8,785 total_scores)
-- [x] Phase 3 — Strategy ABC + 6 전략 + Lookahead 가드 + Engine + Runner
-- [x] Phase 4 — Streamlit 5 페이지 + Quarto 6 챕터 + dashboard/report/update CLI
+- [x] Phase 3 — Strategy ABC + 7 전략(MultiManager 추가) + Lookahead-safe + Engine + Runner
+- [x] Phase 4 — Quarto 6 챕터 + report CLI (Streamlit 5페이지는 `_legacy_dashboard/`로 격리)
 - [x] Phase 4+ — Gemini LLM 통합 (분기 헤드라인 요약 + Top 10 시그널 해석, thinking on/off 토글)
+- [x] Phase 5 — Static SPA (9페이지) + FastAPI 정적 서버 + DuckDB→JSON exporter + Gemini `/api/ask` chat + per-IP rate limit
 
-119 unit tests passed. (Phase 4 UI는 단위 테스트 X — Streamlit 부팅 health=200 자동 검증, Quarto 렌더는 사용자 환경 CLI 설치 후 수동 검증; LLM은 httpx mock + 실 Gemini 호출 end-to-end 검증)
+**156 unit + 2 integration tests passed**. (Frontend SPA는 단위 테스트 X — `thirteen-f serve` 후 브라우저 navigate 검증; LLM은 httpx mock + structured JSON schema 검증; Quarto는 사용자 CLI 설치 후 검증)
 
 ## Phase 3 Backtest Snapshot (2024-01-02 ~ 2026-05-20, cost_bps=10)
 
@@ -123,19 +141,25 @@ print(c.execute('''
 |---|---|---|
 | `thirteen-f collect [--start QUARTER]` | 1 | done |
 | `thirteen-f analyze [--threshold FLOAT]` | 2 | done |
-| `thirteen-f backtest [--strategy NAME / --all] [--start --end --cost-bps]` | 3 | done |
-| `thirteen-f dashboard` | 4 | done (Streamlit 5 pages on :8501) |
+| `thirteen-f backtest [--strategy NAME / --all] [--start --end --cost-bps]` | 3 | done (7 strategies incl. MultiManager) |
+| `thirteen-f export [--out DIR]` | 5 | done (DuckDB → JSON dump for SPA) |
+| `thirteen-f serve [--host --port --reload]` | 5 | done (FastAPI 정적 SPA on :8765) |
 | `thirteen-f report [--quarter Q / --latest] [--open]` | 4 | done (Quarto CLI 필요) |
-| `thirteen-f update [--skip-collect / --skip-backtest / --skip-report]` | all | done |
+| `thirteen-f update [--skip-collect / --skip-backtest / --skip-export / --skip-report]` | all | done |
 
 ## Tech Stack
 
-Python ≥ 3.11 / uv / httpx / lxml / duckdb / polars / pyyaml / typer / yfinance / rich / tenacity / streamlit + plotly + Quarto (Phase 4) / Gemini API (raw httpx, optional)
+**Backend**: Python ≥ 3.11 / uv / httpx / lxml / duckdb / polars / pyyaml / typer / yfinance / rich / tenacity / pydantic v2 / fastapi + uvicorn (Phase 5) / plotly (Quarto 전용)
+**Frontend**: React 18 + Babel-standalone (CDN) / Pretendard + JetBrains Mono / hash router SPA
+**Optional**: Quarto CLI (HTML 리포트) / Gemini API raw httpx (LLM 요약·해석·chat)
 
 ## Design References
 
-- 디자인 스펙: `docs/superpowers/specs/2026-05-20-13f-tracker-design.md`
-- 구현 계획: `docs/superpowers/plans/2026-05-21-13f-tracker.md`
+- 디자인 스펙 (Phase 0~4): `docs/superpowers/specs/2026-05-20-13f-tracker-design.md`
+- 구현 계획 (Phase 0~4): `docs/superpowers/plans/2026-05-21-13f-tracker.md`
+- 구현 계획 (Phase 5 SPA migration): `docs/superpowers/plans/2026-05-22-13f-frontend-migration.md`
+- Frontend/backend 데이터 계산 위치: `_claude_docs/FRONTEND_PARITY.md`
+- Frontend 디자인 reference: `handoff/design/` (9페이지 prototype, read-only)
 - 사전 조사: `참고/` (PLAN.md, edgar_notes.md, schema.md)
 - 프로젝트 가이드: `CLAUDE.md`
 
