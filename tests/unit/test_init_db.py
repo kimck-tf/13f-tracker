@@ -30,7 +30,8 @@ def test_holdings_pk_no_null(tmp_path):
     init_db(db_path)
     conn = duckdb.connect(str(db_path))
     conn.execute(
-        "INSERT INTO managers VALUES ('0000000001','Test','t','Fund','value',2020,1.0)"
+        "INSERT INTO managers (cik, name, label, fund, style, active_since, cloning_score_weight) "
+        "VALUES ('0000000001','Test','t','Fund','value',2020,1.0)"
     )
     conn.execute(
         "INSERT INTO filings VALUES "

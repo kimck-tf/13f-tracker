@@ -6,9 +6,9 @@ import streamlit as st
 
 from thirteen_f.analyze.concentration import hhi
 from thirteen_f.core.config import load_settings
-from thirteen_f.dashboard._theme import apply_theme, kpi_card, section, sidebar_toggle, status_bar
-from thirteen_f.dashboard.charts import portfolio_treemap
-from thirteen_f.dashboard.tables import get_read_only_conn, manager_history
+from thirteen_f._legacy_dashboard._theme import apply_theme, kpi_card, section, sidebar_toggle, status_bar
+from thirteen_f._legacy_dashboard.charts import portfolio_treemap
+from thirteen_f._legacy_dashboard.tables import get_read_only_conn, manager_history
 
 st.set_page_config(page_title="Manager · 13F", page_icon="◆", layout="wide")
 apply_theme()

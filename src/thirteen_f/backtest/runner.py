@@ -11,6 +11,7 @@ from thirteen_f.backtest.engine import run_backtest
 from thirteen_f.backtest.strategies.consensus_top_k import ConsensusTopK
 from thirteen_f.backtest.strategies.conviction_follow import ConvictionFollow
 from thirteen_f.backtest.strategies.ensemble import Ensemble
+from thirteen_f.backtest.strategies.multi_manager import MultiManager
 from thirteen_f.backtest.strategies.new_buy_only import NewBuyOnly
 from thirteen_f.backtest.strategies.score_top_k import ScoreTopK
 from thirteen_f.backtest.strategies.single_manager import SingleManagerClone
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def default_suite() -> list:
-    """Spec §7.2의 기본 6개 전략."""
+    """Spec §7.2의 기본 6개 전략 + Phase 5의 MultiManager(7th)."""
     return [
         SingleManagerClone(label="Buffett"),
         ConsensusTopK(min_holders=3, top_k=20),
@@ -31,6 +32,7 @@ def default_suite() -> list:
             ScoreTopK(top_k=20): 0.4,
             ConsensusTopK(min_holders=3, top_k=20): 0.2,
         }),
+        MultiManager(mgr_labels=["Buffett", "Ackman", "Tepper"], top_k=15),
     ]
 
 

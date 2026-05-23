@@ -17,6 +17,7 @@ EXPECTED_TABLES = {
     "backtest_runs",
     "backtest_curves",
     "backtest_metrics",
+    "backtest_holdings",
 }
 
 SCHEMA_SQL = """
@@ -27,7 +28,9 @@ CREATE TABLE IF NOT EXISTS managers (
     fund VARCHAR,
     style VARCHAR,
     active_since INTEGER,
-    cloning_score_weight DOUBLE DEFAULT 1.0
+    cloning_score_weight DOUBLE DEFAULT 1.0,
+    color VARCHAR DEFAULT '',
+    notes VARCHAR DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS filings (
@@ -57,6 +60,8 @@ CREATE TABLE IF NOT EXISTS cusip_ticker_map (
     ticker     VARCHAR,
     figi       VARCHAR,
     name       VARCHAR,
+    sector     VARCHAR DEFAULT '',
+    industry   VARCHAR DEFAULT '',
     is_etf     BOOLEAN,
     updated_at TIMESTAMP DEFAULT now()
 );
@@ -129,7 +134,24 @@ CREATE TABLE IF NOT EXISTS backtest_metrics (
     win_rate_quarterly DOUBLE,
     bench_total_return DOUBLE, bench_cagr DOUBLE
 );
+
+CREATE TABLE IF NOT EXISTS backtest_holdings (
+    run_id         VARCHAR NOT NULL REFERENCES backtest_runs(run_id),
+    rebalance_date DATE    NOT NULL,
+    ticker         VARCHAR NOT NULL,
+    weight         DOUBLE  NOT NULL,
+    PRIMARY KEY (run_id, rebalance_date, ticker)
+);
 """
+
+
+# Idempotent in-place migrations for DBs created before Phase 5 (Plan A2/A3).
+MIGRATIONS = [
+    "ALTER TABLE managers ADD COLUMN IF NOT EXISTS color VARCHAR DEFAULT ''",
+    "ALTER TABLE managers ADD COLUMN IF NOT EXISTS notes VARCHAR DEFAULT ''",
+    "ALTER TABLE cusip_ticker_map ADD COLUMN IF NOT EXISTS sector VARCHAR DEFAULT ''",
+    "ALTER TABLE cusip_ticker_map ADD COLUMN IF NOT EXISTS industry VARCHAR DEFAULT ''",
+]
 
 
 def init_db(db_path: Path | str) -> None:
@@ -138,6 +160,8 @@ def init_db(db_path: Path | str) -> None:
     conn = duckdb.connect(str(db_path))
     try:
         conn.execute(SCHEMA_SQL)
+        for sql in MIGRATIONS:
+            conn.execute(sql)
     finally:
         conn.close()
 

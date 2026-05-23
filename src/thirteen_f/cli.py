@@ -95,6 +95,7 @@ def backtest(
     from thirteen_f.backtest.engine import run_backtest
     from thirteen_f.backtest.strategies.consensus_top_k import ConsensusTopK
     from thirteen_f.backtest.strategies.conviction_follow import ConvictionFollow
+    from thirteen_f.backtest.strategies.multi_manager import MultiManager
     from thirteen_f.backtest.strategies.new_buy_only import NewBuyOnly
     from thirteen_f.backtest.strategies.score_top_k import ScoreTopK
     from thirteen_f.backtest.strategies.single_manager import SingleManagerClone
@@ -104,10 +105,21 @@ def backtest(
         "ConsensusTopK": lambda: ConsensusTopK(min_holders=3, top_k=20),
         "ConvictionFollow": lambda: ConvictionFollow(top_k=10),
         "NewBuyOnly": lambda: NewBuyOnly(min_holders=2, top_k=15),
+        "MultiManager": lambda: MultiManager(mgr_labels=["Buffett", "Ackman", "Tepper"], top_k=15),
     }
     if strategy.startswith("SingleManagerClone("):
         label = strategy.split("(")[1].rstrip(")")
         strat = SingleManagerClone(label=label)
+    elif strategy.startswith("MultiManager("):
+        # 형식: MultiManager(Buffett,Ackman,Tepper:15) 또는 MultiManager(Buffett,Ackman)
+        body = strategy.split("(", 1)[1].rstrip(")")
+        if ":" in body:
+            labels_str, top_str = body.split(":", 1)
+            top_k = int(top_str)
+        else:
+            labels_str, top_k = body, 15
+        labels = [s.strip() for s in labels_str.split(",") if s.strip()]
+        strat = MultiManager(mgr_labels=labels, top_k=top_k)
     elif strategy in registry:
         strat = registry[strategy]()
     else:
@@ -126,13 +138,15 @@ def backtest(
 
 
 @app.command()
-def dashboard() -> None:
-    """Phase 4: Streamlit 대시보드 실행."""
-    import subprocess
-    from pathlib import Path
+def serve(
+    host: str = typer.Option("127.0.0.1", help="Bind host"),
+    port: int = typer.Option(8765, help="Bind port"),
+    reload: bool = typer.Option(False, help="Auto-reload on file change (dev)"),
+) -> None:
+    """Phase 5: serve the static SPA + JSON data + /api/* at http://host:port."""
+    from thirteen_f.web.cli import do_serve
 
-    app_path = Path(__file__).parent / "dashboard" / "app.py"
-    subprocess.run(["streamlit", "run", str(app_path)], check=False)
+    do_serve(host=host, port=port, reload=reload)
 
 
 @app.command()
@@ -187,12 +201,35 @@ def report(
 
 
 @app.command()
+def export(
+    out: str = typer.Option(
+        "",
+        help="Output directory for JSON files (default: src/thirteen_f/web/data)",
+    ),
+) -> None:
+    """Phase 5: DuckDB → JSON dump for the static SPA."""
+    from pathlib import Path
+
+    from thirteen_f.core.config import load_settings
+    from thirteen_f.web.cli import do_export
+
+    settings = load_settings()
+    out_path = Path(out) if out else Path("src/thirteen_f/web/data")
+    do_export(
+        out=out_path,
+        llm_available=bool(settings.google_api_key),
+        db_path=str(settings.duckdb_path),
+    )
+
+
+@app.command()
 def update(
     skip_collect: bool = typer.Option(False, help="collect 단계 건너뛰기"),
     skip_backtest: bool = typer.Option(False, help="backtest 단계 건너뛰기"),
+    skip_export: bool = typer.Option(False, help="export 단계 건너뛰기 (Phase 5)"),
     skip_report: bool = typer.Option(False, help="report 단계 건너뛰기"),
 ) -> None:
-    """collect → analyze → backtest --all → report --latest 순차 실행.
+    """collect → analyze → backtest --all → export → report --latest 순차 실행.
 
     ⚠️ typer command 함수를 Python에서 직접 호출하면 OptionInfo 기본값이 그대로
     전달되어 타입 에러 발생. 따라서 subprocess로 자기 자신(thirteen-f CLI)을
@@ -217,6 +254,9 @@ def update(
     if not skip_backtest:
         typer.echo("=== Phase 3: backtest --all ===")
         run_step(["backtest", "--all"])
+    if not skip_export:
+        typer.echo("=== Phase 5: export (DuckDB -> JSON for SPA) ===")
+        run_step(["export"])
     if not skip_report:
         typer.echo("=== Phase 4: report --latest ===")
         run_step(["report", "--latest"])

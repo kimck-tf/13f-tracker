@@ -85,3 +85,53 @@ def signal_explain_prompt(
         f"- 마지막 줄에 다음 면책 추가: \"{_LIMITS_NOTE}\""
     )
     return "\n".join(lines)
+
+
+# ─── Phase 5 D3: /api/ask 용 chat prompt + structured JSON schema ───────────
+CHAT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "text": {"type": "string"},
+        "cards": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "enum": ["line", "bar", "table"]},
+                    "title": {"type": "string"},
+                    "data": {"type": "object"},
+                },
+                "required": ["type", "title", "data"],
+            },
+        },
+    },
+    "required": ["text", "cards"],
+}
+
+
+def chat_prompt(question: str, context_block: str) -> str:
+    """Ask 페이지 chat 응답을 위한 prompt.
+
+    - 입력 길이 제한 (1900 char) + injection 회피 위해 ``###`` 제거.
+    - 한국어 답변 + structured JSON 강제 (CHAT_SCHEMA 매칭).
+    - 면책 문구는 prompt 자체에 명시 (모델이 응답에 추가하지 않아도 사용자 측 클라이언트가 일관 표시 가능).
+    """
+    q = question[:1900] if len(question) > 1900 else question
+    q = q.replace("###", "")  # 안전: prompt section 마커 escape
+    return f"""당신은 13F 공시 데이터 분석 도우미입니다.
+다음 컨텍스트에 기반해 답하세요. 컨텍스트 외 내용은 추측하지 말고 모른다고 답하세요.
+
+모든 답변은 참고용이며 투자 권유가 아닙니다. {_LIMITS_NOTE}
+
+### CONTEXT
+{context_block}
+
+### USER QUESTION
+{q}
+
+### INSTRUCTIONS
+- 응답은 반드시 JSON: {{"text": "한국어 답변", "cards": [...]}} 형식
+- cards는 0~3개. 종류: line(시계열), bar(분기별 막대), table(랭킹)
+- 데이터가 없거나 답할 수 없으면 cards=[] + text에 이유 설명
+- 점수의 상대적 강약·보유 변화 사실만 설명, 매수 매도 권고 금지
+"""

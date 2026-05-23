@@ -23,6 +23,8 @@ def generate(
     max_output_tokens: int = 8192,
     timeout: float = 60.0,
     enable_thinking: bool = True,
+    response_mime_type: str | None = None,
+    response_schema: dict | None = None,
 ) -> str | None:
     """Gemini generateContent 1회 호출. 키 없거나 실패 시 None.
 
@@ -33,9 +35,12 @@ def generate(
             thinking 미지원 모델에는 양쪽 모두 무해.
         max_output_tokens: thinking ON일 때 thinking+응답이 함께 나눠 쓰므로 한도를 크게
             잡아야 답변이 잘리지 않는다. 기본 8192 — thinking 2~3k + 응답 1~2k 여유.
+        response_mime_type: "application/json" 지정 시 structured output 모드 (Phase 5 D3).
+        response_schema: JSON schema 객체. response_mime_type=application/json과 함께 사용.
 
     Returns:
         모델 응답 텍스트 (한국어 prompt이면 한국어 출력). 실패 시 None.
+        structured JSON 모드에서는 JSON 문자열 그대로 반환 — 호출자가 json.loads 해야 함.
     """
     if not api_key:
         return None
@@ -46,6 +51,10 @@ def generate(
     }
     if not enable_thinking:
         gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+    if response_mime_type:
+        gen_cfg["responseMimeType"] = response_mime_type
+    if response_schema:
+        gen_cfg["responseSchema"] = response_schema
     payload: dict[str, Any] = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": gen_cfg,

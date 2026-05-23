@@ -4,8 +4,8 @@ from __future__ import annotations
 import streamlit as st
 
 from thirteen_f.core.config import load_settings
-from thirteen_f.dashboard._theme import apply_theme, kpi_card, section, sidebar_toggle, status_bar
-from thirteen_f.dashboard.tables import (
+from thirteen_f._legacy_dashboard._theme import apply_theme, kpi_card, section, sidebar_toggle, status_bar
+from thirteen_f._legacy_dashboard.tables import (
     get_read_only_conn,
     latest_period,
     manager_list,

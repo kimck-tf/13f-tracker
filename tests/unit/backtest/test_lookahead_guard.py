@@ -21,7 +21,8 @@ def conn(tmp_path):
     init_db(db)
     c = duckdb.connect(str(db))
     c.execute(
-        "INSERT INTO managers VALUES ('cikA','Buffett','Buffett','BRK','value',1996,1.0)"
+        "INSERT INTO managers (cik, name, label, fund, style, active_since, cloning_score_weight) "
+        "VALUES ('cikA','Buffett','Buffett','BRK','value',1996,1.0)"
     )
     c.execute(
         """INSERT INTO filings

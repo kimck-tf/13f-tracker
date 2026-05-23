@@ -1,4 +1,8 @@
-"""DuckDB → pandas DataFrame helpers."""
+"""DuckDB → pandas DataFrame helpers.
+
+Migrated from src/thirteen_f/dashboard/tables.py in Phase 5 (Plan A1).
+The dashboard/tables.py module now re-exports from here for backward compatibility.
+"""
 from __future__ import annotations
 
 from datetime import date

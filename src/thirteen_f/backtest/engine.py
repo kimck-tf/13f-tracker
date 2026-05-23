@@ -77,6 +77,8 @@ def run_backtest(
 
     nav_series: list[tuple[date, float, float, int]] = []
     quarter_navs: dict[str, float] = {}  # {quarter_label: nav at start}
+    # Phase 5 A4: 분기 첫 영업일의 current_weights snapshot 누적 (backtest_holdings persist용)
+    quarter_holdings: dict[str, tuple[date, dict[str, float]]] = {}
 
     from thirteen_f.core.dates import quarter_label
 
@@ -127,6 +129,8 @@ def run_backtest(
         q_lab = quarter_label(d)
         if q_lab not in quarter_navs:
             quarter_navs[q_lab] = portfolio_value
+            if current_weights:
+                quarter_holdings[q_lab] = (d, dict(current_weights))
 
     # 메트릭
     navs = [n[1] for n in nav_series]
@@ -166,6 +170,7 @@ def run_backtest(
         params_json=strategy.params_json(),
         benchmark=benchmark,
         cost_bps=cost_bps,
+        holdings_log=quarter_holdings,
     )
 
     if persist:
@@ -190,3 +195,13 @@ def _persist_result(conn: duckdb.DuckDBPyConnection, r: BacktestResult) -> None:
          m["mdd"], m["calmar"], m["win_rate_quarterly"],
          m["bench_total_return"], m["bench_cagr"]),
     )
+    # Phase 5 A4: backtest_holdings — 분기 첫 영업일의 target snapshot
+    rows = []
+    for _q_lab, (rdate, weights) in r.holdings_log.items():
+        for ticker, weight in weights.items():
+            rows.append((r.run_id, rdate, ticker, weight))
+    if rows:
+        conn.executemany(
+            "INSERT OR REPLACE INTO backtest_holdings VALUES (?, ?, ?, ?)",
+            rows,
+        )

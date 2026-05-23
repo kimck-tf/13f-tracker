@@ -1,12 +1,15 @@
 """DB → prompt → Gemini 호출 통합 함수. Quarto/Streamlit/CLI에서 공용."""
 from __future__ import annotations
 
+import json
 from datetime import date
 
 import duckdb
 
 from thirteen_f.llm.gemini import generate
 from thirteen_f.llm.prompts import (
+    CHAT_SCHEMA,
+    chat_prompt,
     quarterly_headline_prompt,
     signal_explain_prompt,
 )
@@ -131,3 +134,41 @@ def explain_top_signals(  # noqa: D401
         prompt, api_key=api_key, model=model,
         max_output_tokens=8192, enable_thinking=enable_thinking,
     )
+
+
+def chat_reply(
+    question: str,
+    period: date,
+    conn: duckdb.DuckDBPyConnection,
+    api_key: str,
+    model: str = "gemini-2.5-flash",
+    enable_thinking: bool = True,
+) -> dict | None:
+    """Phase 5 D3: /api/ask 응답. structured JSON (text + cards)을 dict로 반환.
+
+    실패 흐름:
+    - api_key 비어있음 → None (caller가 503 응답)
+    - LLM 호출 실패 → None
+    - JSON 파싱 실패 → text-only fallback (cards=[])
+    """
+    if not api_key:
+        return None
+    from thirteen_f.web.ask_context import build_context
+
+    context = build_context(question, period, conn)
+    prompt = chat_prompt(question, context)
+    raw = generate(
+        prompt=prompt,
+        api_key=api_key,
+        model=model,
+        max_output_tokens=8192,
+        enable_thinking=enable_thinking,
+        response_mime_type="application/json",
+        response_schema=CHAT_SCHEMA,
+    )
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {"text": raw, "cards": []}

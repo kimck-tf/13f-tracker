@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 import duckdb
@@ -39,3 +39,5 @@ class BacktestResult:
     params_json: str = ""
     benchmark: str = "SPY"
     cost_bps: float = 10.0
+    # quarter_label -> (rebalance_date, {ticker: weight}) — Phase 5 A4: backtest_holdings persist
+    holdings_log: dict[str, tuple[date, dict[str, float]]] = field(default_factory=dict)
