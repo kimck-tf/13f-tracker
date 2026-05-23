@@ -130,6 +130,10 @@ def export_stocks(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
 
     Source: ``cusip_ticker_map`` (sector/industry must be backfilled via
     ``scripts/supplement_sector.py``); falls back to "Other" if missing.
+
+    I3: SQL 호출 횟수를 N_ticker × N_quarter → N_quarter로 줄임 (예: 1584 × 9 → 9).
+    각 분기에 대해 한 번에 모든 ticker의 분기말 close를 가져오고, 결과를 ticker별
+    px 배열로 조립.
     """
     q_dates = _quarter_end_dates(conn)
     rows = conn.execute(
@@ -143,25 +147,29 @@ def export_stocks(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
         ORDER BY ticker
         """
     ).fetchall()
+    tickers = [r[0] for r in rows]
+    # 분기별 한 번에 모든 ticker의 분기말 close 조회 (DuckDB MAX_BY)
+    px_matrix: dict[str, list[float | None]] = {t: [None] * len(q_dates) for t in tickers}
+    for q_idx, qd in enumerate(q_dates):
+        for ticker, close in conn.execute(
+            """
+            SELECT ticker, MAX_BY(close, date) AS close_at_qend
+            FROM prices
+            WHERE date <= ?
+            GROUP BY ticker
+            """,
+            (qd,),
+        ).fetchall():
+            if ticker in px_matrix and close is not None:
+                px_matrix[ticker][q_idx] = float(close)
     payload: list[dict] = []
     for ticker, display_name, sector, industry in rows:
-        px: list[float | None] = []
-        for qd in q_dates:
-            row = conn.execute(
-                """
-                SELECT close FROM prices
-                WHERE ticker = ? AND date <= ?
-                ORDER BY date DESC LIMIT 1
-                """,
-                (ticker, qd),
-            ).fetchone()
-            px.append(float(row[0]) if row and row[0] is not None else None)
         payload.append({
             "t": ticker,
             "n": display_name,
             "s": sector,
             "i": industry or None,
-            "px": px,
+            "px": px_matrix[ticker],
         })
     (out_dir / "stocks.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
@@ -200,6 +208,13 @@ def export_holdings(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
     Shape: ``{manager_label: {ticker: [shares_per_quarter_in_millions]}}``.
     Unmapped CUSIPs (no ticker in cusip_ticker_map) are isolated into the
     second file so the SPA can ignore them safely while preserving raw data.
+
+    Note on ``filed_at <= q + 180 days`` filter:
+      - SPA는 시계열 viewer라 분기말 filing은 모두 표시하는 게 의도.
+      - ``period_of_report = q`` 자체 조건만으로 미래 분기 filing은 제외되어 lookahead 위험 없음.
+      - 180일 cutoff는 SEC 룰(45일)을 6개월 cushion으로 늘려 ``delinquent late filing``만
+        제외하기 위함. ``superseded_by IS NULL``로 정정본 중 최신만 선택되므로,
+        180일 이내 도착한 정정본은 모두 잡힘. 180일 이후 도착하는 case는 사실상 0건.
     """
     quarters = _quarter_end_dates(conn)
     q_count = len(quarters)

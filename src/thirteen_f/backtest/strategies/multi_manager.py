@@ -22,6 +22,12 @@ class MultiManager(Strategy):
     Holdings are summed by ticker (across managers), sorted by total USD value,
     and the top ``top_k`` tickers form the equal-weight (or by-value) portfolio.
     Manager periods may differ — that's intentional (each uses their freshest data).
+
+    ⚠️ ``weighting="byvalue"`` stale-period bias:
+      매니저별 분기가 다를 때, value_usd가 stale period의 가격으로 산정된 값이라
+      비교하기에 균질하지 않음. 예: A는 Q1 filing(가치 100B at Q1 가격), B는 Q2 filing
+      (80B at Q2 가격)일 때, A의 가중치가 인공적으로 커질 수 있음. ``"equal"``이
+      이런 bias로부터 자유로움 — 비교 신뢰성이 중요하면 equal 권장.
     """
 
     def __init__(

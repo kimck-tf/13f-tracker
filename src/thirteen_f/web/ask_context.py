@@ -10,8 +10,42 @@ from datetime import date
 
 import duckdb
 
-# 1~5자 대문자 — US 티커 일반 길이
-TICKER_RE = re.compile(r"\b[A-Z]{1,5}\b")
+# 2~5자 대문자 — US 티커 일반 길이. 1자 ticker는 false positive 비용이 너무 커서 제외
+# (예: "A is good"에서 "A"가 Agilent로 잡힘).
+TICKER_RE = re.compile(r"\b[A-Z]{2,5}\b")
+
+# 흔한 영문 약어 stop-list — 사용자 질문에 ticker가 아닌 단어로 자주 등장
+_TICKER_STOPWORDS = frozenset({
+    # 자료 형식 / 일반 약어
+    "JSON", "API", "URL", "HTML", "CSS", "PDF", "CSV", "XML", "YAML", "SQL",
+    "OK", "USD", "EUR", "JPY", "KRW", "GBP", "CNY", "ETF",
+    # 13F 도메인 약어
+    "CIK", "SEC", "13F", "13D", "CUSIP", "EDGAR", "NPORT",
+    # 직책 / 일반
+    "CEO", "CFO", "CTO", "COO", "IPO", "EPS", "PER", "PBR", "ROE", "ROA",
+    "Q1", "Q2", "Q3", "Q4", "YTD", "YOY", "QOQ", "MOM", "MTD",
+    # 매니저 관련 풀네임 약어
+    "WB", "MB", "BA", "SK", "DT", "SD",  # avatar codes
+    # 모듈 식별자
+    "LLM", "AI", "ML", "GPT",
+})
+
+
+def _candidate_tickers(question_upper: str, known_tickers: frozenset[str]) -> list[str]:
+    """Question에서 ticker 후보 추출: 정규식 → stop-list 제거 → known set intersect.
+
+    known_tickers 인자가 비어 있으면 stop-list만 적용 (호환성 fallback).
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for tk in TICKER_RE.findall(question_upper):
+        if tk in _TICKER_STOPWORDS or tk in seen:
+            continue
+        if known_tickers and tk not in known_tickers:
+            continue
+        seen.add(tk)
+        out.append(tk)
+    return out
 
 # 매니저 라벨 → 키워드 (영문 last name + 한글 + 펀드명)
 # 라벨은 managers.yaml 그대로 (대소문자 보존)
@@ -59,14 +93,13 @@ def build_context(question: str, period: date, conn: duckdb.DuckDBPyConnection) 
             + ", ".join(f"{t}={n}" for t, n in summary if t is not None)
         )
 
-    # 2) Tickers in question → top holders
-    tickers_seen: set[str] = set()
-    for tk in TICKER_RE.findall(question.upper()):
-        if tk in tickers_seen:
-            continue
-        tickers_seen.add(tk)
-        if len(tickers_seen) > 3:
-            break
+    # 2) Tickers in question → top holders (known set intersect로 false positive 차단)
+    known = frozenset(
+        t for (t,) in conn.execute(
+            "SELECT DISTINCT ticker FROM cusip_ticker_map WHERE ticker IS NOT NULL"
+        ).fetchall()
+    )
+    for tk in _candidate_tickers(question.upper(), known)[:3]:
         rows = conn.execute(
             """
             SELECT m.label, h.shares, h.value_usd

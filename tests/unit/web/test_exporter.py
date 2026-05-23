@@ -176,6 +176,57 @@ def test_export_prices_split_per_ticker(conn, tmp_path: Path):
     assert payload["close"] == [170.0, 171.0, 200.0, 200.5]
 
 
+def test_export_holdings_cutoff_excludes_delinquent_filing(tmp_path: Path):
+    """C4 보강: filed_at > q+180d delinquent filing은 export에서 제외되는지 검증."""
+    from datetime import date
+    import duckdb
+    from scripts.init_db import init_db
+    from thirteen_f.collect.loader import upsert_filing, upsert_holdings, upsert_manager
+    from thirteen_f.web.exporter import export_holdings
+
+    db = tmp_path / "cutoff.duckdb"
+    init_db(db)
+    c = duckdb.connect(str(db))
+    upsert_manager(c, {
+        "cik": "cdq", "name": "Delinquent Mgr", "label": "DQM",
+        "fund": "DQ", "style": "value", "active_since": 2010,
+        "cloning_score_weight": 1.0,
+    })
+    # Q1'24 분기: 정상 filing (45일 이내)
+    upsert_filing(c, {
+        "accession_no": "a_ok", "cik": "cdq", "form_type": "13F-HR",
+        "period_of_report": date(2024, 3, 31),
+        "filed_at": date(2024, 5, 15),
+        "is_amendment": False,
+    })
+    # Q1'24 분기인데 filed_at이 200일 후 — delinquent (cutoff 180일 초과)
+    upsert_filing(c, {
+        "accession_no": "a_late", "cik": "cdq", "form_type": "13F-HR",
+        "period_of_report": date(2024, 3, 31),
+        "filed_at": date(2024, 10, 17),  # q + 200d
+        "is_amendment": False,
+    })
+    upsert_holdings(c, "a_ok", [
+        {"cusip": "AAA", "name_of_issuer": "Apple", "title_of_class": "COM",
+         "value_usd": 1_000, "shares": 5_000_000, "share_type": "SH", "put_call": ""},
+    ])
+    upsert_holdings(c, "a_late", [
+        {"cusip": "AAA", "name_of_issuer": "Apple", "title_of_class": "COM",
+         "value_usd": 999, "shares": 9_999_999, "share_type": "SH", "put_call": ""},
+    ])
+    c.execute(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, is_etf) VALUES ('AAA','AAPL',FALSE)"
+    )
+    out = tmp_path / "out"
+    out.mkdir()
+    export_holdings(c, out)
+    import json
+    h = json.loads((out / "holdings.json").read_text(encoding="utf-8"))
+    # 정상 filing만 잡힘 — shares=5.0M 그대로, 9.99M은 제외
+    assert h["dqm"]["AAPL"][0] == 5.0
+    c.close()
+
+
 def test_export_holdings_splits_mapped_and_unmapped(conn, tmp_path: Path):
     export_holdings(conn, tmp_path)
     holdings = json.loads((tmp_path / "holdings.json").read_text(encoding="utf-8"))

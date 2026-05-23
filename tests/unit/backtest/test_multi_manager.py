@@ -98,6 +98,57 @@ def test_multi_manager_empty_labels_returns_empty(conn):
     assert s.get_target_positions(date(2024, 6, 1), conn) == {}
 
 
+def test_multi_manager_per_manager_different_periods(tmp_path):
+    """I7: 매니저별 latest period가 다를 때 각자 본인의 가장 신선한 분기 holdings 사용."""
+    db = tmp_path / "diffq.duckdb"
+    init_db(db)
+    c = duckdb.connect(str(db))
+    upsert_manager(c, {
+        "cik": "c1", "name": "M1", "label": "M1",
+        "fund": "F1", "style": "value", "active_since": 2010,
+        "cloning_score_weight": 1.0,
+    })
+    upsert_manager(c, {
+        "cik": "c2", "name": "M2", "label": "M2",
+        "fund": "F2", "style": "value", "active_since": 2010,
+        "cloning_score_weight": 1.0,
+    })
+    # M1: Q1만 filing
+    upsert_filing(c, {
+        "accession_no": "a1q1", "cik": "c1", "form_type": "13F-HR",
+        "period_of_report": date(2024, 3, 31),
+        "filed_at": date(2024, 5, 15),
+        "is_amendment": False,
+    })
+    # M2: Q2만 filing (Q1 filing 없음)
+    upsert_filing(c, {
+        "accession_no": "a2q2", "cik": "c2", "form_type": "13F-HR",
+        "period_of_report": date(2024, 6, 30),
+        "filed_at": date(2024, 8, 14),
+        "is_amendment": False,
+    })
+    upsert_holdings(c, "a1q1", [
+        {"cusip": "AAA", "name_of_issuer": "Apple", "title_of_class": "COM",
+         "value_usd": 1000, "shares": 10, "share_type": "SH", "put_call": ""},
+    ])
+    upsert_holdings(c, "a2q2", [
+        {"cusip": "BBB", "name_of_issuer": "Boeing", "title_of_class": "COM",
+         "value_usd": 2000, "shares": 20, "share_type": "SH", "put_call": ""},
+    ])
+    c.executemany(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, is_etf) VALUES (?, ?, ?)",
+        [("AAA", "AAPL", False), ("BBB", "BA", False)],
+    )
+    # as_of_date = Q3 시작: M1 latest = Q1, M2 latest = Q2 — 다른 분기
+    s = MultiManager(mgr_labels=["M1", "M2"], top_k=5)
+    targets = s.get_target_positions(date(2024, 9, 1), c)
+    # 두 매니저의 holdings가 다른 분기에서 와도 모두 집계됨
+    assert set(targets.keys()) == {"AAPL", "BA"}
+    assert targets["AAPL"] == pytest.approx(0.5)
+    assert targets["BA"] == pytest.approx(0.5)
+    c.close()
+
+
 def test_multi_manager_skips_13f_nt(conn):
     """form_type LIKE '13F-HR%' 필터로 13F-NT는 제외."""
     upsert_filing(conn, {

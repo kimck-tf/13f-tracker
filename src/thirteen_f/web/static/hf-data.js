@@ -561,10 +561,19 @@ async function bootstrapFromJson(baseUrl = "/data") {
   async function fetchJson(path, fallback) {
     try {
       const r = await fetch(`${baseUrl}/${path}`);
-      if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
+      if (!r.ok) {
+        // I6: 어떤 파일이 누락됐는지 명확히 (ErrorScreen에 표시)
+        const err = new Error(`${path}: HTTP ${r.status}`);
+        err.missingFile = path;
+        err.httpStatus = r.status;
+        throw err;
+      }
       return await r.json();
     } catch (e) {
       if (fallback !== undefined) return fallback;
+      if (!e.missingFile) {
+        e.missingFile = path; // 네트워크 오류 등에도 어떤 파일 시도 중이었는지 정보 보존
+      }
       throw e;
     }
   }

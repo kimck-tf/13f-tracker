@@ -31,15 +31,28 @@ DATA_DIR = BASE / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)  # mount target must exist
 
 RATE_LIMIT_PER_MIN = 10
+# In-memory per-IP rate limit. **Single uvicorn worker만 안전** — multi-worker로 띄우면
+# 각 worker가 독립 dict를 가져 effective rate가 N×RATE_LIMIT_PER_MIN이 됨. 진짜 multi-worker
+# 환경이 필요하면 slowapi/Redis 같은 외부 store 사용 권장.
+# 프록시(Nginx/Cloudflare) 뒤에서는 모두 같은 upstream IP로 보이니 X-Forwarded-For 헤더
+# 처리 필요 — 현 구현은 single-process + 직접 노출 가정.
 _rate_limit: dict[str, list[float]] = defaultdict(list)
 
 
 def _check_rate(ip: str) -> bool:
     now = time()
-    _rate_limit[ip] = [t for t in _rate_limit[ip] if now - t < 60]
-    if len(_rate_limit[ip]) >= RATE_LIMIT_PER_MIN:
+    bucket = [t for t in _rate_limit[ip] if now - t < 60]
+    if len(bucket) >= RATE_LIMIT_PER_MIN:
+        _rate_limit[ip] = bucket  # 빈 entry는 아래에서 정리
         return False
-    _rate_limit[ip].append(now)
+    bucket.append(now)
+    _rate_limit[ip] = bucket
+    # 빈 entry 제거 + 다른 IP의 만료 entry도 함께 GC (10 호출당 1회 housekeeping)
+    if len(_rate_limit) > 100 or (len(bucket) % 10 == 0):
+        for k in list(_rate_limit.keys()):
+            _rate_limit[k] = [t for t in _rate_limit[k] if now - t < 60]
+            if not _rate_limit[k]:
+                del _rate_limit[k]
     return True
 
 

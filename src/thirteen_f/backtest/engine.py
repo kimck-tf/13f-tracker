@@ -160,6 +160,11 @@ def run_backtest(
         "bench_cagr": cagr(bench_navs, num_days=len(bench_navs)),
     }
 
+    # I8: deep copy로 caller mutation이 engine internal state에 영향 없도록 격리
+    holdings_log_copy = {
+        q_lab: (rdate, dict(weights))
+        for q_lab, (rdate, weights) in quarter_holdings.items()
+    }
     result = BacktestResult(
         run_id=uuid.uuid4().hex,
         strategy_name=strategy.name,
@@ -170,7 +175,7 @@ def run_backtest(
         params_json=strategy.params_json(),
         benchmark=benchmark,
         cost_bps=cost_bps,
-        holdings_log=quarter_holdings,
+        holdings_log=holdings_log_copy,
     )
 
     if persist:
@@ -196,12 +201,14 @@ def _persist_result(conn: duckdb.DuckDBPyConnection, r: BacktestResult) -> None:
          m["bench_total_return"], m["bench_cagr"]),
     )
     # Phase 5 A4: backtest_holdings — 분기 첫 영업일의 target snapshot
+    # I5: run_id가 매번 uuid.uuid4().hex로 새 값이라 (run_id, rdate, ticker) PK 충돌 불가 →
+    # 평범한 INSERT로 충분 (OR REPLACE는 의도 불명확이라 제거).
     rows = []
     for _q_lab, (rdate, weights) in r.holdings_log.items():
         for ticker, weight in weights.items():
             rows.append((r.run_id, rdate, ticker, weight))
     if rows:
         conn.executemany(
-            "INSERT OR REPLACE INTO backtest_holdings VALUES (?, ?, ?, ?)",
+            "INSERT INTO backtest_holdings VALUES (?, ?, ?, ?)",
             rows,
         )

@@ -22,16 +22,31 @@ function BacktestScreen({ route, quarter, setQuarter }) {
   const startQ = 0;
   const endQ = QUARTERS.length - 1;
 
-  // Phase 5: backend BACKTESTS(real run) 우선, 매칭 실패 시 runStrategy(prototype) fallback.
-  // 같은 type끼리는 createdAt DESC 순서로 첫 매칭 — frontend의 다중 strategy list는
-  // 디자인 prototype이라 backend의 default suite와 1:1 정렬 안 됨. 일치/근사가 우선.
+  // Phase 5 (C1 보강): backend BACKTESTS(real run) 우선, 정밀 type+params 매칭 후
+  // 매칭 실패 시 runStrategy(prototype) fallback. chip에 _source 배지 표시 + KPI는 backend만 집계.
+  function matchBackendRun(s, used) {
+    const arr = Array.isArray(BACKTESTS) ? BACKTESTS : [];
+    for (const r of arr) {
+      if (!r || !r.run_id || used.has(r.run_id)) continue;
+      if (typeof r.name !== "string" || !r.name.startsWith(s.type)) continue;
+      // Type별 params 정밀 매칭
+      if (s.type === "SingleManagerClone") {
+        const fullName = MGR_MAP[s.params.mgrId]?.name || s.params.mgrId || "";
+        const lastWord = String(fullName).split(" ").slice(-1)[0];
+        // backend name: "SingleManagerClone(Buffett)" — 마지막 단어가 들어 있어야
+        if (lastWord && !r.name.includes(`(${lastWord})`)) continue;
+      }
+      // MultiManager / Ensemble / ScoreTopK / ConsensusTopK / ConvictionFollow / NewBuyOnly:
+      // backend default_suite에 type별 1개씩만 등록되므로 first-match로 충분
+      return r;
+    }
+    return null;
+  }
+
   const results = useMemo(() => {
     const used = new Set();
     return strategies.filter(s => s.on).map(s => {
-      // 매칭 키: type prefix (e.g., "SingleManagerClone" matches "SingleManagerClone(Buffett)")
-      const match = (Array.isArray(BACKTESTS) ? BACKTESTS : []).find(r =>
-        r && r.run_id && !used.has(r.run_id) && typeof r.name === "string" && r.name.startsWith(s.type)
-      );
+      const match = matchBackendRun(s, used);
       if (match && Array.isArray(match.equity) && match.equity.length > 0) {
         used.add(match.run_id);
         const m = match.metrics || {};
@@ -53,7 +68,6 @@ function BacktestScreen({ route, quarter, setQuarter }) {
             totalRet: m.totalRet ?? 0,
             benchRet: m.benchTotalRet ?? 0,
             alpha: (m.cagr ?? 0) - (m.benchCagr ?? 0),
-            // 미export 필드는 0 fallback (prototype과 shape 호환)
             vol: 0, beta: 0, turnover: 0,
             qretsBench: [], ddBench: [],
             _source: "backend",
@@ -61,7 +75,6 @@ function BacktestScreen({ route, quarter, setQuarter }) {
           },
         };
       }
-      // Fallback: prototype runStrategy (mock-era 시뮬, Builder/Compare UI 용도)
       return {
         strategy: s,
         data: { ...runStrategy({ type: s.type, params: s.params, startQ, endQ }), _source: "prototype" },
@@ -79,11 +92,14 @@ function BacktestScreen({ route, quarter, setQuarter }) {
     return ranked[0];
   }, [results]);
 
-  // Aggregate KPIs across strategies
-  const bestCAGR = results.length ? Math.max(...results.map(r => r.data.cagr)) : 0;
-  const bestSharpe = results.length ? Math.max(...results.map(r => r.data.sharpe)) : 0;
-  const deepestMDD = results.length ? Math.min(...results.map(r => r.data.maxDD)) : 0;
-  const benchCAGR = results[0]?.data.benchCagr || 0;
+  // Aggregate KPIs (C1: backend source만 집계 — prototype 시뮬은 mock 데이터라 신뢰성 ↓)
+  const backendResults = results.filter(r => r.data._source === "backend");
+  const kpiPool = backendResults.length ? backendResults : results;
+  const bestCAGR = kpiPool.length ? Math.max(...kpiPool.map(r => r.data.cagr)) : 0;
+  const bestSharpe = kpiPool.length ? Math.max(...kpiPool.map(r => r.data.sharpe)) : 0;
+  const deepestMDD = kpiPool.length ? Math.min(...kpiPool.map(r => r.data.maxDD)) : 0;
+  const benchCAGR = kpiPool[0]?.data.benchCagr || 0;
+  const simCount = results.length - backendResults.length;
 
   function updateStrategy(id, patch) {
     setStrategies(list => list.map(s => s.id === id ? { ...s, ...patch } : s));
@@ -136,7 +152,7 @@ function BacktestScreen({ route, quarter, setQuarter }) {
       <div className="hf-pg bt">
         {/* Aggregate KPI strip */}
         <div className="bt-agg-kpis">
-          <Stat label="STRATEGIES" value={results.length} sub="active" />
+          <Stat label="STRATEGIES" value={results.length} sub={simCount > 0 ? `${backendResults.length} backend · ${simCount} sim` : "all backend"} />
           <Stat label="BEST CAGR" value={<span className="pos">{fmtPct(bestCAGR, { signed: true })}</span>} />
           <Stat label="BEST SHARPE" value={<span className="pos">{bestSharpe.toFixed(2)}</span>} />
           <Stat label="DEEPEST MDD" value={<span className="neg">{fmtPct(deepestMDD)}</span>} />
@@ -164,6 +180,9 @@ function BacktestScreen({ route, quarter, setQuarter }) {
                       <span className="muted">·</span>
                       <span>{r.data.sharpe.toFixed(2)}</span>
                     </div>
+                  )}
+                  {r && r.data._source === "prototype" && (
+                    <span className="bt-strat-sim mono" title="frontend prototype 시뮬 — backend backtest run에 매칭되지 않음. KPI 비교에서 제외됨." style={{ marginLeft: 4, padding: "1px 5px", borderRadius: 4, background: "var(--rule)", color: "var(--ink-3)", fontSize: 10, letterSpacing: 0.5 }}>SIM</span>
                   )}
                   {isLead && <span className="bt-strat-lead mono">LEAD</span>}
                   <button className="bt-strat-x" onClick={() => removeStrategy(s.id)} disabled={strategies.length <= 1} title="remove">×</button>

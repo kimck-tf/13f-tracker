@@ -234,6 +234,10 @@ def update(
     ⚠️ typer command 함수를 Python에서 직접 호출하면 OptionInfo 기본값이 그대로
     전달되어 타입 에러 발생. 따라서 subprocess로 자기 자신(thirteen-f CLI)을
     재호출. 분기 1회 사용이라 overhead 무시 가능.
+
+    Note: ``serve``는 이 흐름에 포함되지 않음 (장시간 실행 명령). 데이터 갱신 후
+    별도 터미널에서 ``uv run thirteen-f serve``를 실행하거나, 이미 실행 중이면
+    브라우저 새로고침으로 export 결과를 반영.
     """
     import subprocess
     import sys

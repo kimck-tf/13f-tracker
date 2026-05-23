@@ -57,24 +57,41 @@ function LoadingScreen() {
 }
 
 function ErrorScreen({ error }) {
+  // I6: 친화적 메시지 — error.missingFile / httpStatus 기반 진단 + 해결 단계
+  const missing = error && error.missingFile;
+  const status = error && error.httpStatus;
+  let hint = null;
+  if (missing === "meta.json" && status === 404) {
+    hint = (
+      <>아직 <code>thirteen-f export</code>가 실행되지 않았습니다. 터미널에서 한 번 실행하세요:
+      <pre style={{ padding: 8, background: "#0f172a", color: "#e2e8f0", borderRadius: 6, marginTop: 6 }}>uv run thirteen-f export</pre></>
+    );
+  } else if (missing && status === 404) {
+    hint = <>일부 데이터 파일이 누락됨: <code>{missing}</code>. <code>thirteen-f export</code> 재실행 권장.</>;
+  } else if (status) {
+    hint = <>서버 응답 오류 (HTTP {status}, <code>{missing}</code>).</>;
+  } else {
+    hint = <>네트워크 오류 — 서버가 켜져 있는지 (<code>uv run thirteen-f serve</code>) 확인하세요.</>;
+  }
   return (
-    <div style={{ padding: 40, fontFamily: "Pretendard, sans-serif" }}>
+    <div style={{ padding: 40, fontFamily: "Pretendard, sans-serif", maxWidth: 720 }}>
       <h2 style={{ margin: 0 }}>데이터 로드 실패</h2>
-      <p className="muted" style={{ marginTop: 8 }}>
-        서버가 켜져 있고 <code>thirteen-f export</code>가 실행됐는지 확인하세요.
-      </p>
-      <pre
-        style={{
-          padding: 12,
-          background: "#f1f5f9",
-          borderRadius: 6,
-          marginTop: 12,
-          overflow: "auto",
-          fontSize: 12,
-        }}
-      >
-        {String(error && error.stack ? error.stack : error)}
-      </pre>
+      <p className="muted" style={{ marginTop: 8 }}>{hint}</p>
+      <details style={{ marginTop: 16 }}>
+        <summary className="muted" style={{ cursor: "pointer", fontSize: 12 }}>기술적 세부 (디버그)</summary>
+        <pre
+          style={{
+            padding: 12,
+            background: "#f1f5f9",
+            borderRadius: 6,
+            marginTop: 8,
+            overflow: "auto",
+            fontSize: 11,
+          }}
+        >
+          {String(error && error.message ? error.message : error)}
+        </pre>
+      </details>
     </div>
   );
 }
