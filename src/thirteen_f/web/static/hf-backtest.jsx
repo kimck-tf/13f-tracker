@@ -22,12 +22,52 @@ function BacktestScreen({ route, quarter, setQuarter }) {
   const startQ = 0;
   const endQ = QUARTERS.length - 1;
 
-  const results = useMemo(() =>
-    strategies.filter(s => s.on).map(s => ({
-      strategy: s,
-      data: runStrategy({ type: s.type, params: s.params, startQ, endQ }),
-    })),
-  [strategies]);
+  // Phase 5: backend BACKTESTS(real run) 우선, 매칭 실패 시 runStrategy(prototype) fallback.
+  // 같은 type끼리는 createdAt DESC 순서로 첫 매칭 — frontend의 다중 strategy list는
+  // 디자인 prototype이라 backend의 default suite와 1:1 정렬 안 됨. 일치/근사가 우선.
+  const results = useMemo(() => {
+    const used = new Set();
+    return strategies.filter(s => s.on).map(s => {
+      // 매칭 키: type prefix (e.g., "SingleManagerClone" matches "SingleManagerClone(Buffett)")
+      const match = (Array.isArray(BACKTESTS) ? BACKTESTS : []).find(r =>
+        r && r.run_id && !used.has(r.run_id) && typeof r.name === "string" && r.name.startsWith(s.type)
+      );
+      if (match && Array.isArray(match.equity) && match.equity.length > 0) {
+        used.add(match.run_id);
+        const m = match.metrics || {};
+        return {
+          strategy: s,
+          data: {
+            equity: match.equity,
+            dd: match.dd || [],
+            qrets: match.qrets || [],
+            benchEquity: match.benchEquity || [],
+            holdingsLog: match.holdingsLog || [],
+            cagr: m.cagr ?? 0,
+            sharpe: m.sharpe ?? 0,
+            sortino: m.sortino ?? 0,
+            maxDD: m.maxDD ?? 0,
+            calmar: m.calmar ?? 0,
+            hitRate: m.hitRate ?? 0,
+            benchCagr: m.benchCagr ?? 0,
+            totalRet: m.totalRet ?? 0,
+            benchRet: m.benchTotalRet ?? 0,
+            alpha: (m.cagr ?? 0) - (m.benchCagr ?? 0),
+            // 미export 필드는 0 fallback (prototype과 shape 호환)
+            vol: 0, beta: 0, turnover: 0,
+            qretsBench: [], ddBench: [],
+            _source: "backend",
+            _runId: match.run_id,
+          },
+        };
+      }
+      // Fallback: prototype runStrategy (mock-era 시뮬, Builder/Compare UI 용도)
+      return {
+        strategy: s,
+        data: { ...runStrategy({ type: s.type, params: s.params, startQ, endQ }), _source: "prototype" },
+      };
+    });
+  }, [strategies]);
 
   // Benchmark from first result
   const bench = results[0]?.data.benchEquity || [];
