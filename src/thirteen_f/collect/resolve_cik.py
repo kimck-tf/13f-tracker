@@ -49,7 +49,16 @@ def resolve_missing_ciks(
 
     resolved = 0
     for m in managers:
-        if m.get("cik"):
+        cik = m.get("cik")
+        for value in [cik, *(m.get("extra_ciks") or [])]:
+            if value and not isinstance(value, str):
+                # YAML 1.1은 따옴표 없는 0~7 숫자열(0001061165)을 8진수 int로 읽는다.
+                # 이 상태로 safe_dump하면 원래 CIK가 사라지므로 파일을 쓰기 전에 중단.
+                raise ValueError(
+                    f"managers.yaml {m.get('label')}: cik가 문자열이 아닌 {value!r}로 읽힘 — "
+                    "따옴표로 감싼 10자리 문자열로 입력하세요 (예: cik: '0001061165')"
+                )
+        if cik:
             continue
         query = m.get("fund") or m.get("name")
         cik = resolve_cik_by_name(query, company_tickers)
