@@ -9,13 +9,14 @@ from thirteen_f._legacy_dashboard.charts import cumulative_curve, drawdown_chart
 from thirteen_f.web.queries import backtest_curves_df, backtest_metrics_df
 
 conn = get_conn()
-metrics = backtest_metrics_df(conn)
+# run은 실행마다 누적되므로 전략별 최신 run만 비교 (backtest_metrics_df는 created_at DESC 정렬)
+metrics = backtest_metrics_df(conn).drop_duplicates("strategy_name")
 metrics
 ```
 
 ```{python}
 #| echo: false
-run_ids = metrics["run_id"].tolist()[:6]
+run_ids = metrics["run_id"].tolist()
 curves = backtest_curves_df(conn, run_ids)
 cumulative_curve(curves)
 ```

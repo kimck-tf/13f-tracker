@@ -58,7 +58,7 @@ def analyze(
 @app.command()
 def backtest(
     strategy: str = typer.Option(None, help="실행할 전략 이름. --all과 동시 사용 금지."),
-    all_: bool = typer.Option(False, "--all", help="등록된 6개 전략 모두 실행."),
+    all_: bool = typer.Option(False, "--all", help="runner.default_suite()의 전략 모두 실행."),
     start: str = typer.Option("2013-01-01", help="백테스트 시작일 (YYYY-MM-DD)"),
     end: str = typer.Option(None, help="백테스트 종료일 (YYYY-MM-DD, 기본=오늘)"),
     cost_bps: float = typer.Option(10.0, help="편도 거래비용 (bp)"),

@@ -64,3 +64,34 @@ def test_ticker_null_excluded(conn):
     # 정규화: AAPL 800/1000, B 200/1000 → ticker=null 제외 후에도 합 1.0
     assert pytest.approx(sum(targets.values()), abs=1e-6) == 1.0
     assert "XXXNULL" not in targets
+
+
+def test_same_ticker_rows_are_combined(conn):
+    """주식과 콜옵션처럼 같은 ticker에 행이 여러 개면 합산 — 덮어쓰면 비중 합이 1보다 작아진다."""
+    upsert_holdings(conn, "a1", [
+        {"cusip": "037833100", "name_of_issuer": "Apple", "title_of_class": "COM",
+         "value_usd": 800, "shares": 10, "share_type": "SH", "put_call": ""},
+        {"cusip": "037833100", "name_of_issuer": "Apple", "title_of_class": "COM",
+         "value_usd": 200, "shares": 2, "share_type": "SH", "put_call": "Call"},
+        {"cusip": "037833200", "name_of_issuer": "B", "title_of_class": "COM",
+         "value_usd": 200, "shares": 5, "share_type": "SH", "put_call": ""},
+    ])
+    s = SingleManagerClone(label="Buffett")
+    targets = s.get_target_positions(as_of_date=date(2024, 6, 1), conn=conn)
+    assert targets["AAPL"] == pytest.approx(1000 / 1200)
+    assert pytest.approx(sum(targets.values()), abs=1e-6) == 1.0
+
+
+def test_put_rows_excluded(conn):
+    """풋은 기초자산 롱 노출이 아니므로 롱 온리 복제에서 뺀다."""
+    upsert_holdings(conn, "a1", [
+        {"cusip": "037833100", "name_of_issuer": "Apple", "title_of_class": "COM",
+         "value_usd": 800, "shares": 10, "share_type": "SH", "put_call": ""},
+        {"cusip": "037833200", "name_of_issuer": "B", "title_of_class": "COM",
+         "value_usd": 200, "shares": 5, "share_type": "SH", "put_call": ""},
+        {"cusip": "037833200", "name_of_issuer": "B", "title_of_class": "COM",
+         "value_usd": 500, "shares": 5, "share_type": "SH", "put_call": "Put"},
+    ])
+    s = SingleManagerClone(label="Buffett")
+    targets = s.get_target_positions(as_of_date=date(2024, 6, 1), conn=conn)
+    assert targets == {"AAPL": pytest.approx(0.8), "B": pytest.approx(0.2)}

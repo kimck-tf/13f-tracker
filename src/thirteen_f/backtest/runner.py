@@ -20,9 +20,10 @@ logger = logging.getLogger(__name__)
 
 
 def default_suite() -> list:
-    """Spec §7.2의 기본 6개 전략 + Phase 5의 MultiManager(7th)."""
+    """Spec §7.2의 기본 6개 전략 + Phase 5의 MultiManager + 복제 비교용 Druckenmiller 복제."""
     return [
         SingleManagerClone(label="Buffett"),
+        SingleManagerClone(label="Druckenmiller"),
         ConsensusTopK(min_holders=3, top_k=20),
         ScoreTopK(top_k=20),
         ConvictionFollow(top_k=10),

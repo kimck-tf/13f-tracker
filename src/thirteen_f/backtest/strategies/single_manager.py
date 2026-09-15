@@ -42,14 +42,17 @@ class SingleManagerClone(Strategy):
             return {}
         accession = latest[0]
         # 3. holdings + ticker 매핑 (ticker NULL 제외)
+        #    같은 ticker의 주식·콜옵션 행은 합산하고, 풋은 롱 노출이 아니므로 뺀다
         rows = conn.execute(
             """
-            SELECT m.ticker, h.value_usd
+            SELECT m.ticker, SUM(h.value_usd)
             FROM holdings h
             JOIN cusip_ticker_map m ON h.cusip = m.cusip
             WHERE h.accession_no = ?
               AND m.ticker IS NOT NULL
               AND h.value_usd > 0
+              AND UPPER(h.put_call) <> 'PUT'
+            GROUP BY m.ticker
             """,
             (accession,),
         ).fetchall()
