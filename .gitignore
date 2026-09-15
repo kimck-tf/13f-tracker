@@ -64,7 +64,7 @@ Thumbs.db
 *.tmp
 
 # vcr cassette (네트워크 녹화) - 기본 제외, 필요 시 강제 add
-tests/cassettes/
+tests/fixtures/cassettes/
 
 # Notebook
 .ipynb_checkpoints/

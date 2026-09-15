@@ -17,6 +17,7 @@ from thirteen_f.core.config import Settings
 
 CASSETTE_DIR = Path(__file__).parent.parent / "fixtures" / "cassettes"
 CASSETTE_DIR.mkdir(parents=True, exist_ok=True)
+CASSETTE_NAME = "buffett_2024q1.yaml"
 
 # 기본: 'none' (재생만, 네트워크 X). 새 cassette 녹화 시 RECORD_VCR=1 명시.
 import os as _os
@@ -31,6 +32,10 @@ my_vcr = vcr.VCR(
 
 
 @pytest.mark.integration
+@pytest.mark.skipif(
+    _record_mode == "none" and not (CASSETTE_DIR / CASSETTE_NAME).exists(),
+    reason="VCR 카세트 없음 (로컬 전용, gitignore) — RECORD_VCR=1로 1회 녹화 필요",
+)
 def test_collect_buffett_one_quarter(tmp_path):
     db = tmp_path / "test.duckdb"
     init_db(db)
@@ -52,7 +57,7 @@ def test_collect_buffett_one_quarter(tmp_path):
         duckdb_path=db,
     )
 
-    with my_vcr.use_cassette("buffett_2024q1.yaml"):
+    with my_vcr.use_cassette(CASSETTE_NAME):
         stats = run_collect(
             settings=settings,
             managers_yaml=managers_yaml,

@@ -60,10 +60,18 @@ def test_serve_starts_and_health_returns_200(tmp_path) -> None:
             time.sleep(0.5)
         pytest.fail(f"timed out waiting for {url} (last error: {last_err})")
     finally:
-        # Windows: send CTRL_BREAK_EVENT is unreliable from a non-console child;
-        # plain terminate()/kill() is the portable cleanup.
+        # Windows: terminate()는 최상위 uv.exe만 끝내고 thirteen-f.exe → python 손자 프로세스가
+        # 남아 포트와 .venv/Scripts/thirteen-f.exe를 계속 잡는다 (이후 uv sync 실패).
+        # 이 테스트가 띄운 프로세스 트리 전체를 taskkill /T로 종료한다.
         if proc.poll() is None:
-            proc.terminate()
+            if sys.platform == "win32":
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                    capture_output=True,
+                    check=False,
+                )
+            else:
+                proc.terminate()
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:

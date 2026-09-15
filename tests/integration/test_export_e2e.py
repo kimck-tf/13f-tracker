@@ -64,6 +64,7 @@ def populated_db(tmp_path: Path) -> Path:
     return db_path
 
 
+@pytest.mark.integration
 def test_export_command_writes_all_json_files(
     tmp_path: Path,
     populated_db: Path,
