@@ -43,6 +43,8 @@ _book/
 .quarto/
 *.html
 !docs/**/*.html
+# Phase 5 SPA 진입점 — 위 *.html 규칙의 예외 (없으면 serve의 / 가 404)
+!src/thirteen_f/web/static/index.html
 
 # 백테스트 결과
 results/
