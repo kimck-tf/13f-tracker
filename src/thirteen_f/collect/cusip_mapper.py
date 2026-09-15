@@ -99,7 +99,11 @@ def _openfigi_batch(
     headers = {"Content-Type": "text/json"}
     if api_key:
         headers["X-OPENFIGI-APIKEY"] = api_key
-    payload = [{"idType": "ID_CUSIP", "idValue": c} for c in cusips]
+    # 첫 글자가 알파벳이면 CINS(외국 소재 발행사, 예: Chubb H1467J104) — OpenFIGI는 ID_CUSIP으로
+    # 조회하면 'No identifier found'를 돌려주므로 ID_CINS로 조회한다.
+    payload = [
+        {"idType": "ID_CINS" if c[:1].isalpha() else "ID_CUSIP", "idValue": c} for c in cusips
+    ]
     with httpx.Client(timeout=30.0) as client:
         resp = client.post(OPENFIGI_URL, json=payload, headers=headers)
         resp.raise_for_status()

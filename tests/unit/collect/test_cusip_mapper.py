@@ -10,6 +10,7 @@ from thirteen_f.collect.cusip_mapper import (
     fill_missing,
     _pick_us_primary,
     _normalize_ticker,
+    _openfigi_batch,
 )
 
 
@@ -109,3 +110,22 @@ def test_fill_missing_calls_openfigi_for_misses(db_path):
     ).fetchone()
     assert row[0] == "AAPL"
     conn.close()
+
+
+def test_openfigi_batch_uses_cins_id_type_for_letter_prefixed_cusip():
+    """외국 소재 미국 상장사의 CINS 코드(Chubb H1467J104 등)는 ID_CUSIP으로 조회하면
+    OpenFIGI가 'No identifier found'를 돌려준다 — 첫 글자가 알파벳이면 ID_CINS."""
+    resp = MagicMock()
+    resp.json.return_value = [
+        {"data": [{"exchCode": "UN", "ticker": "AAPL"}]},
+        {"data": [{"exchCode": "UN", "ticker": "CB"}]},
+    ]
+    client = MagicMock()
+    client.post.return_value = resp
+    with patch("thirteen_f.collect.cusip_mapper.httpx.Client") as mock_client:
+        mock_client.return_value.__enter__.return_value = client
+        out = _openfigi_batch(["037833100", "H1467J104"], api_key=None)
+
+    sent = client.post.call_args.kwargs["json"]
+    assert [p["idType"] for p in sent] == ["ID_CUSIP", "ID_CINS"]
+    assert [o["ticker"] for o in out] == ["AAPL", "CB"]
