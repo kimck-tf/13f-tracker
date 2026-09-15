@@ -93,6 +93,10 @@ def _upsert_prices(
 ) -> int:
     rows: list[tuple] = []
     for idx, row in df.iterrows():
+        # 확정 전 거래일은 가격이 NaN으로 온다 — 저장하면 백테스트 NAV 전체가 NaN이 되므로 건너뛰고
+        # 다음 수집 때 채운다 (engine은 빠진 날을 직전 가격으로 채움)
+        if pd.isna(row.get("Close")) or pd.isna(row.get("Adj Close", row.get("Close"))):
+            continue
         try:
             d = idx.date() if hasattr(idx, "date") else date.fromisoformat(str(idx)[:10])
             rows.append(
