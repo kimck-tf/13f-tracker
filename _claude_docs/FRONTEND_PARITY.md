@@ -10,7 +10,7 @@ Phase 5 SPA는 데이터의 1차 출처를 명확히 분리한다. 백엔드 exp
 | `STOCKS[].px[i]` (분기말 close) | Backend (`exporter.export_stocks`) — prices 테이블 분기말 이하 가장 가까운 영업일 | unit test: `test_export_stocks_uses_sector_and_quarter_end_close` |
 | `STOCKS[].pxWeekly` | Frontend (`hf-data.js:buildWeeklyPrices`) — quarterly → 8-step interpolation + sin noise | 시각화 전용. 실거래 계산 금지 (분기말 px만 truth) |
 | `STOCKS[].s` (sector) | Backend (`cusip_ticker_map.sector` via supplement_sector.py) | `scripts/supplement_sector.py`로 1회 backfill 필수 |
-| `MANAGERS[].avatar` | Backend (`exporter._avatar_from_name`) — full name 첫 2글자 | `test_avatar_from_name` |
+| `MANAGERS[].avatar` | Backend (`exporter._avatar_from_name`) — full name 단어별 첫 글자, 최대 2자 (Warren Buffett → WB) | `test_avatar_from_name` |
 | `MANAGERS[].color` | Backend (config/managers.yaml → managers.color) — style별 팔레트 | yaml 직접 수정 |
 | `HOLDINGS[mgrId][ticker][i]` (백만주) | Backend (`exporter.export_holdings`) — holdings JOIN cusip_ticker_map | `test_export_holdings_splits_mapped_and_unmapped` |
 | `HOLDINGS_UNMAPPED` | Backend — mapping 실패 cusip 격리 | 같은 테스트 |
@@ -22,7 +22,7 @@ Phase 5 SPA는 데이터의 1차 출처를 명확히 분리한다. 백엔드 exp
 | `BACKTESTS[]` (equity/dd/qrets/holdingsLog/metrics) | Backend (`exporter.export_backtest`) — 분기말 resample + backtest_holdings | `test_export_backtest_writes_runs_with_holdings_and_metrics` |
 | `runStrategy(...)` (실시간 backtest in browser) | Frontend (`hf-data.js`) — STOCKS.px 기반 시뮬 (mock-era 잔존, 디자인 prototype 용도) | **실거래 의사결정에 사용 금지**. backend의 `thirteen-f backtest`만 신뢰. Frontend strategy는 BuilderScreen에서 빠른 비교 UI 용도. |
 | daily close series (per ticker) | Backend (`exporter.export_prices_split`) — prices/{TICKER}.json | StockScreen에서 `fetchDailyPx(ticker)` lazy 호출. unit test: `test_export_prices_split_per_ticker` |
-| `LLM_SUMMARY` (분기별 headline/top_signals) | Backend (`exporter.export_llm_summary` — Chunk D 작성 예정) | 사전 캐시. /api/ask는 실시간 |
+| `LLM_SUMMARY` (분기별 headline/top_signals) | **미구현** — `exporter.export_llm_summary`가 없어 `llm_summary.json`이 생성되지 않음. frontend는 `{}`로 대체 | 구현 시 이 행 갱신. /api/ask는 실시간 |
 | `/api/ask` 응답 | Backend (Chunk D `summary.chat_reply`) — Gemini chat with structured cards | 호출 시점마다 새로 생성 |
 
 ## 원칙
