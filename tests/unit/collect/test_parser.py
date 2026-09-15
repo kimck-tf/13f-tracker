@@ -1,10 +1,37 @@
 from datetime import date
 from pathlib import Path
 
-from thirteen_f.collect.parser import parse_information_table, normalize_value
+from thirteen_f.collect.parser import parse_information_table, normalize_value, parse_amendment_type
 
 
 FIXTURES = Path(__file__).parent.parent.parent / "fixtures" / "edgar"
+
+# 13F 표지(primary_doc.xml) 중 정정 정보 부분 — Berkshire 2025Q1 13F-HR/A와 같은 구조
+PRIMARY_DOC_NEW_HOLDINGS = b"""<?xml version="1.0" encoding="UTF-8"?>
+<edgarSubmission xmlns="http://www.sec.gov/edgar/thirteenffiler">
+  <formData>
+    <coverPage>
+      <reportCalendarOrQuarter>03-31-2025</reportCalendarOrQuarter>
+      <isAmendment>true</isAmendment>
+      <amendmentNo>1</amendmentNo>
+      <amendmentInfo>
+        <amendmentType>NEW HOLDINGS</amendmentType>
+        <confDeniedExpired>true</confDeniedExpired>
+      </amendmentInfo>
+    </coverPage>
+  </formData>
+</edgarSubmission>"""
+
+
+def test_parse_amendment_type_new_holdings():
+    assert parse_amendment_type(PRIMARY_DOC_NEW_HOLDINGS) == "NEW HOLDINGS"
+
+
+def test_parse_amendment_type_missing_returns_empty():
+    start = PRIMARY_DOC_NEW_HOLDINGS.index(b"<amendmentInfo>")
+    end = PRIMARY_DOC_NEW_HOLDINGS.index(b"</amendmentInfo>") + len(b"</amendmentInfo>")
+    doc = PRIMARY_DOC_NEW_HOLDINGS[:start] + PRIMARY_DOC_NEW_HOLDINGS[end:]
+    assert parse_amendment_type(doc) == ""
 
 
 def test_normalize_value_old_unit():

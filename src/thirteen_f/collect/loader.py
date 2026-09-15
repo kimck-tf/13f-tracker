@@ -94,6 +94,12 @@ def upsert_holdings(
     )
 
 
+def remove_filing(conn: duckdb.DuckDBPyConnection, accession_no: str) -> None:
+    """적재 대상이 아닌 제출물(예: NEW HOLDINGS 정정)을 holdings와 함께 삭제."""
+    conn.execute("DELETE FROM holdings WHERE accession_no = ?", (accession_no,))
+    conn.execute("DELETE FROM filings WHERE accession_no = ?", (accession_no,))
+
+
 def mark_supersedes(conn: duckdb.DuckDBPyConnection, cik: str) -> int:
     """Spec §5.2: 같은 (cik, period_of_report) 내 최신 filed_at 외 모두 superseded_by 마킹.
     최신 항목은 superseded_by=NULL 유지.

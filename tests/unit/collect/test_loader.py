@@ -9,6 +9,7 @@ from thirteen_f.collect.loader import (
     upsert_filing,
     upsert_holdings,
     mark_supersedes,
+    remove_filing,
 )
 
 
@@ -88,3 +89,33 @@ def test_mark_supersedes(conn):
     assert row[0] == "acc_v2"
     row2 = conn.execute("SELECT superseded_by FROM filings WHERE accession_no='acc_v2'").fetchone()
     assert row2[0] is None
+
+
+def test_remove_filing_makes_original_valid_again(conn):
+    """적재하지 않을 정정(NEW HOLDINGS)을 지우고 재계산하면 원본이 다시 유효본이 된다."""
+    upsert_manager(conn, {"cik": "0000000001", "name": "T", "label": "T", "fund": "F",
+                          "style": "value", "active_since": 2020, "cloning_score_weight": 1.0})
+    upsert_filing(conn, {"accession_no": "orig", "cik": "0000000001",
+                         "form_type": "13F-HR", "period_of_report": date(2025, 3, 31),
+                         "filed_at": date(2025, 5, 15), "is_amendment": False})
+    upsert_filing(conn, {"accession_no": "new_holdings", "cik": "0000000001",
+                         "form_type": "13F-HR/A", "period_of_report": date(2025, 3, 31),
+                         "filed_at": date(2025, 8, 14), "is_amendment": True})
+    upsert_holdings(conn, "new_holdings", [
+        {"cusip": "594918104", "name_of_issuer": "Microsoft", "title_of_class": "COM",
+         "value_usd": 100, "shares": 1, "share_type": "SH", "put_call": ""},
+    ])
+    mark_supersedes(conn, "0000000001")
+
+    remove_filing(conn, "new_holdings")
+    mark_supersedes(conn, "0000000001")
+
+    assert conn.execute(
+        "SELECT superseded_by FROM filings WHERE accession_no='orig'"
+    ).fetchone()[0] is None
+    assert conn.execute(
+        "SELECT COUNT(*) FROM filings WHERE accession_no='new_holdings'"
+    ).fetchone()[0] == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM holdings WHERE accession_no='new_holdings'"
+    ).fetchone()[0] == 0

@@ -39,6 +39,15 @@ def _shrs_prn(node) -> tuple[int, str]:
     return 0, "SH"
 
 
+def parse_amendment_type(primary_doc_xml: bytes) -> str:
+    """13F 표지(primary_doc.xml)의 amendmentType — 'RESTATEMENT' | 'NEW HOLDINGS'. 없으면 ''."""
+    root = etree.fromstring(primary_doc_xml)
+    for el in root.iter():
+        if isinstance(el.tag, str) and _lname(el.tag) == "amendmentType":
+            return (el.text or "").strip().upper()
+    return ""
+
+
 def parse_information_table(xml_bytes: bytes, filed_at: date) -> list[dict[str, Any]]:
     """Parse 13F information table XML.
 
