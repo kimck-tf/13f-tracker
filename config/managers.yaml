@@ -9,7 +9,7 @@
   cloning_score_weight: 1.0
 - name: Seth Klarman
   label: Klarman
-  cik: '0001061165'
+  cik: 0001061768
   fund: Baupost Group
   style: value
   color: '#1d6dc8'
@@ -36,25 +36,16 @@
   cloning_score_weight: 1.0
 - name: Mohnish Pabrai
   label: Pabrai
-  cik: '0001173334'
+  cik: 0001549575
   fund: Dalal Street LLC
   style: value
   color: '#1d6dc8'
   active_since: 2002
   notes: Buffett 추종, 10여 종목
   cloning_score_weight: 1.0
-- name: Joel Greenblatt
-  label: Greenblatt
-  cik: 0001079114
-  fund: Gotham Asset Management
-  style: value
-  color: '#1d6dc8'
-  active_since: 2008
-  notes: Magic Formula, 다종목
-  cloning_score_weight: 0.8
 - name: William Nygren
   label: Nygren
-  cik: '0000813917'
+  cik: 0000813917
   fund: Harris Associates L P
   style: value
   color: '#1d6dc8'
@@ -64,11 +55,13 @@
 - name: Bill Ackman
   label: Ackman
   cik: 0001336528
+  extra_ciks:
+  - '0002026053'
   fund: Pershing Square Capital Management
   style: activist
   color: '#0e8a3b'
   active_since: 2004
-  notes: 8~10 종목 초집중
+  notes: 8~10 종목 초집중 (2026Q2부터 Pershing Square Inc. 명의로 13F 보고)
   cloning_score_weight: 1.0
 - name: Daniel Loeb
   label: Loeb
@@ -81,12 +74,12 @@
   cloning_score_weight: 0.9
 - name: David Einhorn
   label: Einhorn
-  cik: 0001385613
+  cik: 0001489933
   fund: Greenlight Capital
   style: activist
   color: '#0e8a3b'
   active_since: 2004
-  notes: 롱숏 가치 (13F는 롱사이드만)
+  notes: 롱숏 가치 (13F는 롱사이드만, 제출 법인은 DME Capital Management)
   cloning_score_weight: 0.9
 - name: Carl Icahn
   label: Icahn
