@@ -1,8 +1,19 @@
 # 13F Portfolio Tracker — Design Spec
 
 - **작성일**: 2026-05-20
-- **상태**: 디자인 (구현 전)
+- **상태**: Phase 0~4 구현 완료. 본문은 설계 시점 기록이며, 구현 후 달라진 점은 아래 현행화 노트에 모은다.
 - **목적**: 13F로 공개되는 미국 투자 거장 15명의 포트폴리오 변화를 추적·분석·시각화하고, 다중 전략 백테스트로 시그널의 정직성을 검증하는 개인용 도구를 만든다.
+- **현행화 노트 (2026-09-15)**:
+  - Phase 5 (`docs/superpowers/plans/2026-05-22-13f-frontend-migration.md`): Streamlit 대시보드(§1·§8.1)를 정적 SPA + FastAPI로 대체했다. `thirteen-f dashboard`는 제거되고 `thirteen-f export`·`serve`가 추가됐으며(§3.2), Streamlit 코드는 `src/thirteen_f/_legacy_dashboard/`로 격리됐다(§3.1의 `dashboard/`).
+  - Phase 5: MultiManager 전략이 추가돼 기본 등록 전략은 7종이다(§1.1·§7.2). 2026-09에 Buffett 복제와 비교할 `SingleManagerClone(Druckenmiller)`를 기본 suite에 추가해 8개로 구성된다. 복제 전략은 같은 ticker의 주식·콜옵션 행을 합산하고 풋은 제외한다.
+  - Phase 5: `backtest_holdings` 테이블과 `managers.color/notes`, `cusip_ticker_map.sector/industry` 컬럼이 추가됐다 — §4.2에 반영. 스키마 정의의 정답은 `scripts/init_db.py`.
+  - Stooq fallback은 pandas-datareader(pandas 3.0 비호환) 대신 `price_loader.py`에서 httpx로 직접 호출한다(§2·§3.4·§5.6). streamlit·pandas-datareader는 의존성에서 빠졌다.
+  - `config/analysis.toml`은 코드에서 읽지 않는다. diff threshold는 `analyze --threshold`, continuity 윈도우는 `analyze/continuity.py:WINDOW`로 정해진다(§3.1·§6.1).
+  - information table XML은 파일명 규칙이 아니라 "`primary_doc.xml`이 아닌 XML"로 찾는다(§5.1). 이전 규칙(`infotable`/`13f` 포함)은 `56757.xml` 같은 숫자 이름과 `informationtable.xml`을 놓쳐 Berkshire 전 분기가 누락됐었다.
+  - NEW HOLDINGS 유형 13F-HR/A는 적재하지 않는다(§5.2).
+  - 가격 적재 시 종가가 NaN인 행(확정 전 거래일)은 저장하지 않는다(§5.1-1f). 저장하면 백테스트 NAV 전체가 NaN이 된다.
+  - CUSIP 첫 글자가 알파벳인 CINS 코드(외국 소재 미국 상장사: Chubb·NU·Nebius 등)는 OpenFIGI `ID_CINS`로 조회한다(§5.1-1e). `ID_CUSIP`으로는 찾지 못해 전부 미매핑이었다.
+  - 2026-09: 추적 대상은 14명이다(§1.2·§4.1). Klarman·Einhorn·Pabrai의 CIK가 다른 엔터티(Lone Pine Capital, Greenlight Capital Re, 개인 CIK)를 가리키던 것을 Baupost·DME Capital Management·Dalal Street로 바로잡았다. Ackman은 `managers.yaml`의 `extra_ciks`로 Pershing Square Inc. 보고분을 합산한다. Greenblatt(Gotham, 1,791종목)은 추종 가능한 확신 포트폴리오가 아니고 컨센서스 신호를 희석해 제외했다.
 
 ---
 
@@ -224,7 +235,9 @@ dev = ["pytest", "pytest-cov", "ruff", "mypy", "vcr-py"]
 # ... 총 15명
 ```
 
-### 4.2 DuckDB 스키마 (10개 테이블)
+### 4.2 DuckDB 스키마 (12개 테이블)
+
+> 정의의 정답은 `scripts/init_db.py`이고, 기존 DB는 같은 파일의 `MIGRATIONS`로 in-place 변경된다. `-- Phase 5` 주석은 구현 후 추가된 부분이다.
 
 ```sql
 -- 거장 명단
@@ -235,7 +248,9 @@ CREATE TABLE managers (
     fund VARCHAR,
     style VARCHAR,                      -- value | activist | macro
     active_since INTEGER,
-    cloning_score_weight DOUBLE DEFAULT 1.0
+    cloning_score_weight DOUBLE DEFAULT 1.0,
+    color VARCHAR DEFAULT '',           -- Phase 5: SPA 표시색
+    notes VARCHAR DEFAULT ''            -- Phase 5
 );
 
 -- 13F 필링
@@ -270,6 +285,8 @@ CREATE TABLE cusip_ticker_map (
     ticker VARCHAR,
     figi VARCHAR,
     name VARCHAR,
+    sector VARCHAR DEFAULT '',          -- Phase 5: scripts/supplement_sector.py로 채움
+    industry VARCHAR DEFAULT '',        -- Phase 5
     is_etf BOOLEAN,
     updated_at TIMESTAMP DEFAULT now()
 );
@@ -345,6 +362,15 @@ CREATE TABLE backtest_metrics (
     win_rate_quarterly DOUBLE,
     bench_total_return DOUBLE, bench_cagr DOUBLE
 );
+
+-- 백테스트 분기 첫 영업일 목표 비중 (Phase 5)
+CREATE TABLE backtest_holdings (
+    run_id         VARCHAR NOT NULL REFERENCES backtest_runs(run_id),
+    rebalance_date DATE    NOT NULL,
+    ticker         VARCHAR NOT NULL,
+    weight         DOUBLE  NOT NULL,
+    PRIMARY KEY (run_id, rebalance_date, ticker)
+);
 ```
 
 ---
@@ -366,6 +392,8 @@ CREATE TABLE backtest_metrics (
 ### 5.2 정정본 정책
 
 같은 `(cik, period_of_report)`에 여러 필링이 존재할 때 최신 `filed_at`만 분석/백테스트에 사용. 이전 필링의 `superseded_by` 컬럼에 최신 accession 기록 (감사용 보존).
+
+단, 13F-HR/A 중 표지(`primary_doc.xml`)의 `amendmentType`이 `NEW HOLDINGS`인 정정(비공개 기간이 끝난 종목 등을 추가 공개)은 원본을 대체하지 않으므로 적재하지 않는다 (구현 후 추가). 원본이 유효본으로 남고, 추가 공개된 소수 종목만 그 분기에서 빠진다. `RESTATEMENT` 정정은 위 규칙대로 원본을 대체한다.
 
 ### 5.3 값 단위 정규화
 
