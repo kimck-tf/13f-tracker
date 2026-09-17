@@ -19,9 +19,10 @@ from time import time
 
 import duckdb
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.types import Scope
 
 from thirteen_f.core.config import load_settings
 
@@ -117,6 +118,20 @@ def ask(req: AskRequest, request: Request) -> AskResponse:
         conn.close()
 
 
+class NoCacheStaticFiles(StaticFiles):
+    """매 요청 재검증(``Cache-Control: no-cache``)하는 StaticFiles.
+
+    헤더가 없으면 브라우저가 Last-Modified로 캐시 수명을 추정해, 수정한 .jsx·.css나 export로
+    갱신한 JSON 대신 캐시된 예전 파일을 새로고침 후에도 쓴다. no-cache면 매번 ETag로
+    재검증하므로 바뀌지 않은 파일은 304로 끝난다.
+    """
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # mount: 모든 라우트 정의 후 → catch-all이 /api/* 보다 뒤로 배치
-app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+app.mount("/data", NoCacheStaticFiles(directory=DATA_DIR), name="data")
+app.mount("/", NoCacheStaticFiles(directory=STATIC_DIR, html=True), name="static")

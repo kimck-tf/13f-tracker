@@ -118,3 +118,21 @@ def test_api_routes_take_priority_over_catch_all(client: TestClient) -> None:
     assert r.status_code == 200
     # JSON content (not HTML)
     assert "application/json" in r.headers["content-type"]
+
+
+def test_static_assets_require_revalidation(client: TestClient) -> None:
+    """Cache-Control이 없으면 브라우저가 Last-Modified로 캐시 수명을 추정해, 수정한 .jsx·.css 대신
+    캐시된 예전 파일을 새로고침 후에도 계속 쓴다 (Babel이 XHR로 받는 .jsx 포함)."""
+    for path in ("/", "/hf-backtest.jsx", "/hf-styles.css"):
+        r = client.get(path)
+        assert r.status_code == 200, path
+        assert r.headers.get("cache-control") == "no-cache", path
+
+
+def test_data_mount_also_requires_revalidation() -> None:
+    """export JSON(/data)도 같은 규칙 — export로 갱신한 데이터가 캐시에 가려지지 않게."""
+    from thirteen_f.web.server import NoCacheStaticFiles, app
+
+    mounts = {r.name: r.app for r in app.routes if getattr(r, "name", None) in ("data", "static")}
+    assert set(mounts) == {"data", "static"}
+    assert all(isinstance(m, NoCacheStaticFiles) for m in mounts.values())
