@@ -515,7 +515,7 @@ a { color: inherit; text-decoration: none; }
   padding: 6px 10px;
   border: 1.5px solid var(--rule); border-radius: 5px;
   background: var(--bg-tile);
-  font-size: 12px; position: relative;
+  font-size: 12px; position: relative; cursor: pointer;
 }
 .bt-strat-chip.off { opacity: 0.55; }
 .bt-strat-chip.lead { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }

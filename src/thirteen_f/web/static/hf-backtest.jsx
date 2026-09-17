@@ -14,10 +14,10 @@ function BacktestScreen({ route, quarter, setQuarter }) {
     },
   ]);
   const [openPicker, setOpenPicker] = useState(false);
-  const [leadStratId, setLeadStratId] = useState("s1");
+  const [selectedId, setSelectedId] = useState("s1");
 
-  // Quick-controls — these mirror strategy s1 (SingleManagerClone) when it exists
-  const quickStrat = strategies[0];
+  // Quick-controls — chip을 눌러 고른 전략을 보여준다 (고른 전략이 지워졌으면 첫 전략)
+  const quickStrat = strategies.find(s => s.id === selectedId) || strategies[0];
 
   const startQ = 0;
   const endQ = QUARTERS.length - 1;
@@ -119,7 +119,7 @@ function BacktestScreen({ route, quarter, setQuarter }) {
   function removeStrategy(id) {
     if (strategies.length <= 1) return;
     setStrategies(list => list.filter(s => s.id !== id));
-    if (leadStratId === id) setLeadStratId(strategies[0]?.id);
+    if (selectedId === id) setSelectedId(strategies[0]?.id);
   }
 
   const equitySeries = [
@@ -167,8 +167,8 @@ function BacktestScreen({ route, quarter, setQuarter }) {
               const r = results.find(r => r.strategy.id === s.id);
               const isLead = lead?.strategy.id === s.id;
               return (
-                <div key={s.id} className={"bt-strat-chip" + (s.on ? " on" : " off") + (isLead ? " lead" : "")} style={{ borderColor: s.on ? s.color : "var(--rule)" }}>
-                  <button className="bt-strat-toggle" onClick={() => updateStrategy(s.id, { on: !s.on })} title={s.on ? "active" : "muted"}>
+                <div key={s.id} className={"bt-strat-chip" + (s.on ? " on" : " off") + (isLead ? " lead" : "")} style={{ borderColor: s.on ? s.color : "var(--rule)", ...(s.id === quickStrat?.id ? { background: s.color + "15" } : {}) }} onClick={() => setSelectedId(s.id)} title="click to edit in quick controls">
+                  <button className="bt-strat-toggle" onClick={(e) => { e.stopPropagation(); updateStrategy(s.id, { on: !s.on }); }} title={s.on ? "active" : "muted"}>
                     <span className="bt-strat-dot" style={{ background: s.on ? s.color : "var(--ink-3)" }}></span>
                   </button>
                   <div className="bt-strat-id">
@@ -186,7 +186,7 @@ function BacktestScreen({ route, quarter, setQuarter }) {
                     <span className="bt-strat-sim mono" title="frontend prototype 시뮬 — backend backtest run에 매칭되지 않음. KPI 비교에서 제외됨." style={{ marginLeft: 4, padding: "1px 5px", borderRadius: 4, background: "var(--rule)", color: "var(--ink-3)", fontSize: 10, letterSpacing: 0.5 }}>SIM</span>
                   )}
                   {isLead && <span className="bt-strat-lead mono">LEAD</span>}
-                  <button className="bt-strat-x" onClick={() => removeStrategy(s.id)} disabled={strategies.length <= 1} title="remove">×</button>
+                  <button className="bt-strat-x" onClick={(e) => { e.stopPropagation(); removeStrategy(s.id); }} disabled={strategies.length <= 1} title="remove">×</button>
                 </div>
               );
             })}
@@ -209,7 +209,7 @@ function BacktestScreen({ route, quarter, setQuarter }) {
           )}
         </div>
 
-        {/* Quick controls for the first strategy (preserves original UI) */}
+        {/* Quick controls for the strategy selected by clicking its chip */}
         {quickStrat && (
           <div className="bt-controls">
             <div className="bt-controls-hd mono">QUICK CONTROLS · <span style={{ color: quickStrat.color }}>{quickStrat.type}</span></div>
