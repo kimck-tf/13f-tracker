@@ -119,7 +119,7 @@ function AskMessage({ msg, quarter }) {
   }
   return (
     <div className="ask-msg bot">
-      <div className="ask-msg-tag mono">CLAUDE</div>
+      <div className="ask-msg-tag mono">AI</div>
       <div className="ask-msg-body">
         {msg.text && <div className="ask-msg-text">{msg.text}</div>}
         {msg.card && <AskCard card={msg.card} quarter={quarter} />}
