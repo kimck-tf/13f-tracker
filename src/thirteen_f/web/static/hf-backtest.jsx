@@ -55,9 +55,10 @@ function BacktestScreen({ route, quarter, setQuarter }) {
           data: {
             equity: match.equity,
             dd: match.dd || [],
-            qrets: match.qrets || [],
+            // backend qrets[0]은 첫 분기 자리를 채운 0 — prototype처럼 qrets[i] = equity[i] → equity[i+1]로 맞춘다
+            qrets: (match.qrets || []).slice(1),
             benchEquity: match.benchEquity || [],
-            holdingsLog: match.holdingsLog || [],
+            holdingsLog: backendHoldingsLog(match.holdingsLog),
             cagr: m.cagr ?? 0,
             sharpe: m.sharpe ?? 0,
             sortino: m.sortino ?? 0,
@@ -329,7 +330,7 @@ function BacktestScreen({ route, quarter, setQuarter }) {
                 <BarChart values={lead.data.qrets} w={560} h={120} signed formatY={v => fmtPct(v, { decimals: 1 })} />
                 <div className="bt-qrets mono">
                   {lead.data.qrets.map((v, i) => (
-                    <div key={i} className="bt-qret"><span className="bt-qret-l">{Q_LABELS[i + 1]}</span><Delta value={v} kind="pct" decimals={1} /></div>
+                    <div key={i} className="bt-qret"><span className="bt-qret-l">{quarterLabelAt(i + 1)}</span><Delta value={v} kind="pct" decimals={1} /></div>
                   ))}
                 </div>
               </div>
@@ -342,10 +343,10 @@ function BacktestScreen({ route, quarter, setQuarter }) {
                     <div className="bt-comp-r mono">RETURN</div>
                   </div>
                   {lead.data.holdingsLog.map((log, i) => {
-                    const next = i + 1 < lead.data.equity.length ? lead.data.equity[i + 1] / lead.data.equity[i] - 1 : 0;
+                    const next = log.q >= 0 && log.q + 1 < lead.data.equity.length ? lead.data.equity[log.q + 1] / lead.data.equity[log.q] - 1 : 0;
                     return (
                       <div key={i} className="bt-comp-row">
-                        <div className="bt-comp-q mono"><span className="b">{Q_LABELS[log.q]}</span><span className="muted"> → {Q_LABELS[log.q + 1]}</span></div>
+                        <div className="bt-comp-q mono"><span className="b">{quarterLabelAt(log.q)}</span><span className="muted"> → {quarterLabelAt(log.q + 1)}</span></div>
                         <div className="bt-comp-h">
                           {log.picks.slice(0, 12).map(p => (
                             <button key={p.ticker} className="bt-comp-tk" onClick={() => navigate("/stocks/" + p.ticker)} title={`${p.ticker} · ${fmtPct(p.weight, { decimals: 1 })}`}>
@@ -502,6 +503,27 @@ function nextColor(existing) {
   const used = new Set(existing.map(s => s.color));
   for (const c of palette) if (!used.has(c)) return c;
   return palette[existing.length % palette.length];
+}
+
+// helper — backend holdingsLog [{date, holdings}] → 위 렌더링이 쓰는 prototype 형태 [{q, picks}].
+// q = 리밸런스일 직전에 끝난 분기의 QUARTERS 인덱스라서 "q → q+1" 구간의 수익률이 equity[q] → equity[q+1]이다.
+// backend equity는 분기말마다 한 점이고 QUARTERS[0]과 같은 분기에서 시작한다고 본다 (차트 x축과 같은 가정).
+function backendHoldingsLog(log) {
+  const base = quarterIndexOf(Q_DATES[0]);
+  return (log || []).map(entry => ({ q: quarterIndexOf(entry.date) - 1 - base, picks: entry.holdings || [] }));
+}
+
+// helper — QUARTERS[0]부터 k번째 분기의 라벨. 백테스트는 최신 13F 분기 뒤(진행 중인 분기)까지
+// 이어지므로 Q_LABELS 범위 밖은 계산해서 같은 형식("Q3'26")으로 만든다.
+function quarterLabelAt(k) {
+  if (k >= 0 && k < Q_LABELS.length) return Q_LABELS[k];
+  const qi = quarterIndexOf(Q_DATES[0]) + k;
+  return `Q${qi % 4 + 1}'${String(Math.floor(qi / 4)).slice(-2)}`;
+}
+
+// "2024-07-01" → 연도*4 + 분기(0~3)
+function quarterIndexOf(isoDate) {
+  return Number(isoDate.slice(0, 4)) * 4 + Math.floor((Number(isoDate.slice(5, 7)) - 1) / 3);
 }
 
 Object.assign(window, { BacktestScreen, StrategyEditor, ParamEditor });
