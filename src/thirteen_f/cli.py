@@ -89,45 +89,17 @@ def backtest(
             )
         return
 
-    # 단일 전략 실행 (간단한 dispatch)
+    # 단일 전략 실행
     import duckdb
 
     from thirteen_f.backtest.engine import run_backtest
-    from thirteen_f.backtest.strategies.consensus_top_k import ConsensusTopK
-    from thirteen_f.backtest.strategies.conviction_follow import ConvictionFollow
-    from thirteen_f.backtest.strategies.multi_manager import MultiManager
-    from thirteen_f.backtest.strategies.new_buy_only import NewBuyOnly
-    from thirteen_f.backtest.strategies.score_top_k import ScoreTopK
-    from thirteen_f.backtest.strategies.single_manager import SingleManagerClone
+    from thirteen_f.backtest.runner import strategy_by_name
 
-    # runner.default_suite()와 같은 파라미터 (2026-09 탐색, docs/backtest-optimization-2026-09.md)
-    registry = {
-        "ScoreTopK": lambda: ScoreTopK(top_k=40),
-        "ConsensusTopK": lambda: ConsensusTopK(min_holders=3, top_k=10),
-        "ConvictionFollow": lambda: ConvictionFollow(top_k=3),
-        "NewBuyOnly": lambda: NewBuyOnly(min_holders=2, top_k=15),
-        "MultiManager": lambda: MultiManager(
-            mgr_labels=["Burry", "Dalio", "Druckenmiller", "Tepper"], top_k=20
-        ),
-    }
-    if strategy.startswith("SingleManagerClone("):
-        label = strategy.split("(")[1].rstrip(")")
-        strat = SingleManagerClone(label=label)
-    elif strategy.startswith("MultiManager("):
-        # 형식: MultiManager(Buffett,Ackman,Tepper:15) 또는 MultiManager(Buffett,Ackman)
-        body = strategy.split("(", 1)[1].rstrip(")")
-        if ":" in body:
-            labels_str, top_str = body.split(":", 1)
-            top_k = int(top_str)
-        else:
-            labels_str, top_k = body, 15
-        labels = [s.strip() for s in labels_str.split(",") if s.strip()]
-        strat = MultiManager(mgr_labels=labels, top_k=top_k)
-    elif strategy in registry:
-        strat = registry[strategy]()
-    else:
-        typer.echo(f"Unknown strategy: {strategy}", err=True)
-        raise typer.Exit(1)
+    try:
+        strat = strategy_by_name(strategy)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
 
     conn = duckdb.connect(str(settings.duckdb_path))
     try:
@@ -138,6 +110,48 @@ def backtest(
         typer.echo(f"{strat.name}: {res.metrics}")
     finally:
         conn.close()
+
+
+@app.command()
+def targets(
+    strategy: str = typer.Option(
+        ..., help="전략 이름 (예: ConsensusTopK, SingleManagerClone(Buffett))"
+    ),
+    as_of: str = typer.Option(None, "--as-of", help="기준일 (YYYY-MM-DD, 기본=오늘)"),
+) -> None:
+    """이 전략이 지금 지시하는 목표 비중을 출력한다 (분기마다 매매 목록 확인용).
+
+    백테스트와 같은 코드·같은 lookahead 규칙을 쓰므로, 분기 13F가 모두 제출된 뒤에야 그 분기
+    데이터가 반영된다 (2·5·8·11월 중순).
+    """
+    from datetime import date as _date
+    from datetime import datetime
+
+    import duckdb
+
+    from thirteen_f.backtest.runner import strategy_by_name
+    from thirteen_f.core.config import load_settings
+
+    settings = load_settings()
+    d = datetime.fromisoformat(as_of).date() if as_of else _date.today()
+    try:
+        strat = strategy_by_name(strategy)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+    conn = duckdb.connect(str(settings.duckdb_path), read_only=True)
+    try:
+        positions = strat.get_target_positions(as_of_date=d, conn=conn)
+    finally:
+        conn.close()
+
+    typer.echo(f"{d} 기준 {strat.name} — {len(positions)}종목")
+    if not positions:
+        typer.echo("쓸 수 있는 13F가 없어 목표 종목이 없다 (전액 현금)")
+        return
+    for ticker, weight in sorted(positions.items(), key=lambda kv: (-kv[1], kv[0])):
+        typer.echo(f"  {ticker:8s} {weight * 100:5.1f}%")
 
 
 @app.command()

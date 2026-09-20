@@ -33,6 +33,7 @@ uv run thirteen-f analyze                   # signals·consensus·total_scores�
 uv run thirteen-f backtest --all --start 2024-01-02   # 기본 8개(Buffett·Druckenmiller 복제 포함), 실행마다 run 누적
 uv run thirteen-f backtest --strategy ScoreTopK --start 2024-01-02
 uv run python scripts/sweep_backtests.py    # 파라미터 탐색 — DB 사본(data/sweep/)에서 실행, 결과 CSV
+uv run thirteen-f targets --strategy ConsensusTopK    # 지금 이 전략의 목표 비중 (매매 목록 확인)
 uv run thirteen-f export                    # DuckDB → src/thirteen_f/web/data/*.json
 uv run thirteen-f serve                     # http://127.0.0.1:8765, 장시간 실행이라 update에 없음
 uv run thirteen-f report --latest --open    # Quarto CLI 필요 → reports/output/_latest/

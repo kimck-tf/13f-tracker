@@ -112,11 +112,16 @@ SPY: 전 구간 19.05%, H1 20.12%, H2 18.07%. 후반(H2)은 대부분 설정의 
 2. 알고리즘 개선 후보 (탐색에 넣지 않은 정의 변경): 같은 회사 복수 클래스(GOOG/GOOGL, BRK-A/B) 합산, ETF(`cusip_ticker_map.is_etf`) 제외, 컨센서스 가중을 동일가중 대신 보유자 수·확신도 가중으로. 각각 결과를 바꿀 수 있어 같은 절차로 다시 재야 한다.
 3. 분기마다 `sweep_backtests.py`를 다시 돌려 고원이 유지되는지 확인한다. 1위가 이웃보다 크게 앞서기 시작하면 과적합 신호로 본다.
 
-## 부록: 재현
+## 부록: 재현·운용
 
 ```bash
 uv run python scripts/sweep_backtests.py                 # 1차 73개 → data/sweep/sweep_results.csv
 uv run python scripts/sweep_backtests.py --only e2_ --append   # 2차 앙상블 6개
+
+uv run thirteen-f targets --strategy ConsensusTopK       # 지금의 목표 비중 (매 분기 매매 목록)
+uv run thirteen-f targets --strategy ConsensusTopK --as-of 2026-05-20   # 과거 시점 기준
 ```
+
+`targets`는 백테스트와 같은 `get_target_positions`를 호출하므로 lookahead 규칙도 같다 — 그 분기 13F가 모두 제출된 뒤(2·5·8·11월 중순)에 목록이 바뀌고, 그 사이에는 바뀌지 않는다.
 
 CSV 컬럼: `full_*`(전 구간), `h1_*`(2024-05-13~2025-08-14), `h2_*`(2025-08-15~2026-09-14) 각각 `cagr, mdd, sharpe, calmar, bench_cagr, alpha_cagr, avg_positions, min_positions, invested_frac, days`. run 곡선·보유 내역은 `data/sweep/13f.sweep.duckdb`의 `backtest_*` 테이블(run_id는 CSV에).

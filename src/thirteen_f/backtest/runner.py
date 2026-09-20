@@ -41,6 +41,35 @@ def default_suite() -> list:
     ]
 
 
+def strategy_by_name(name: str):
+    """전략 이름 → 인스턴스. `cli.py`의 `backtest --strategy`·`targets --strategy`가 쓴다.
+
+    받는 형식: `ScoreTopK`·`ConsensusTopK`·`ConvictionFollow`·`NewBuyOnly`·`MultiManager`(파라미터
+    없는 이름은 `default_suite()`의 같은 type 전략 — 기본값을 suite 한 곳에만 둔다),
+    `SingleManagerClone(<label>)`, `MultiManager(<label>,<label>[:top_k])`.
+    """
+    if name.startswith("SingleManagerClone("):
+        return SingleManagerClone(label=name.split("(", 1)[1].rstrip(")"))
+    if name.startswith("MultiManager("):
+        body = name.split("(", 1)[1].rstrip(")")
+        if ":" in body:
+            labels_str, top_str = body.split(":", 1)
+            top_k = int(top_str)
+        else:
+            labels_str, top_k = body, 15
+        labels = [s.strip() for s in labels_str.split(",") if s.strip()]
+        return MultiManager(mgr_labels=labels, top_k=top_k)
+    # SingleManagerClone은 매니저를, Ensemble은 구성 전략을 이름으로 지정할 수 없어 제외
+    by_type = {
+        type(s).__name__: s
+        for s in default_suite()
+        if type(s).__name__ not in ("SingleManagerClone", "Ensemble")
+    }
+    if name in by_type:
+        return by_type[name]
+    raise ValueError(f"Unknown strategy: {name}")
+
+
 def run_suite(
     db_path: Path,
     start: date,

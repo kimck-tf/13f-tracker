@@ -42,7 +42,8 @@ EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 �
 - **엔진** (`engine.run_backtest`): 벤치마크(SPY) 가격이 있는 날만 영업일로 순회하므로 `--start`/`--end`는 SPY 가격 범위로 잘린다. 매 영업일 전략을 호출해 target이 바뀐 날만 리밸런싱하고 turnover × `cost_bps`(편도)를 차감한다(첫 진입 포함). 그날 가격이 없는 종목은 직전 가격으로 채워 수익률 0으로 둔다. 분기 첫 영업일 비중을 `holdings_log` → `backtest_holdings`에 저장한다.
 - **복제 전략의 옵션 처리** (`strategies/single_manager.py`): 최신 제출물의 행을 ticker별로 합산해 금액 비율로 비중을 매긴다. 콜옵션은 기초자산 명목금액의 롱 노출로 포함하고, 풋은 롱 노출이 아니므로 제외한다. 금액 단위가 틀린 제출자(Druckenmiller)도 제출물 안 상대 비중이라 영향이 없다.
 - **기본 suite** (`runner.default_suite`, 8개): `SingleManagerClone(Buffett)`, `SingleManagerClone(Druckenmiller)`, `ConsensusTopK(3,10)`, `ScoreTopK(40)`, `ConvictionFollow(3)`, `NewBuyOnly(2,15)`, `Ensemble`(ConsensusTopK(3,10) 0.5 / ConsensusTopK(2,15) 0.5), `MultiManager`(Burry·Dalio·Druckenmiller·Tepper, top 20). 파라미터는 2026-09 탐색(`docs/backtest-optimization-2026-09.md`)의 계열별 최적값이고, `cli.py` registry와 SPA `hf-data.js:STRATEGY_TYPES`의 기본값도 같게 맞춘다. 집계 테이블을 읽는 전략은 분기를 `strategy.latest_public_period`로 고른다(매니저 전원 제출 뒤).
-- **`--strategy` 단일 실행이 받는 이름** (`cli.py` registry): `ScoreTopK`, `ConsensusTopK`, `ConvictionFollow`, `NewBuyOnly`, `MultiManager`, `SingleManagerClone(<label>)`, `MultiManager(<label>,<label>[:top_k])`. `Ensemble`은 registry에 없어 `--all`로만 실행된다.
+- **전략 이름 해석** (`runner.strategy_by_name`, `backtest --strategy`·`targets --strategy` 공용): `ScoreTopK`, `ConsensusTopK`, `ConvictionFollow`, `NewBuyOnly`, `MultiManager`(파라미터 없는 이름은 `default_suite()`의 같은 type 전략을 쓴다 — 기본값이 suite 한 곳에만 있게), `SingleManagerClone(<label>)`, `MultiManager(<label>,<label>[:top_k])`. `SingleManagerClone`·`Ensemble`은 파라미터 없는 이름으로 못 부르고, `Ensemble`은 `--all`로만 실행된다.
+- **`thirteen-f targets`** (`cli.py`): 전략이 지금 지시하는 목표 비중을 출력한다. 백테스트와 같은 `get_target_positions`를 read-only 연결로 호출하므로 lookahead 규칙도 같다 — 분기 13F가 모두 제출된 뒤(2·5·8·11월 중순)에 목록이 바뀐다.
 
 ## web (Phase 5)
 
