@@ -6,7 +6,7 @@ from datetime import date
 
 import duckdb
 
-from thirteen_f.backtest.strategy import Strategy
+from thirteen_f.backtest.strategy import Strategy, latest_public_period
 
 
 class ScoreTopK(Strategy):
@@ -20,19 +20,8 @@ class ScoreTopK(Strategy):
     def get_target_positions(
         self, as_of_date: date, conn: duckdb.DuckDBPyConnection
     ) -> dict[str, float]:
-        # as_of_date에 알려진 최신 분기 (filings.filed_at <= as_of_date)
-        latest_period = conn.execute(
-            """
-            SELECT MAX(t.period_of_report)
-            FROM total_scores t
-            WHERE EXISTS (
-                SELECT 1 FROM filings f
-                WHERE f.period_of_report = t.period_of_report
-                  AND f.filed_at <= ?
-            )
-            """,
-            (as_of_date,),
-        ).fetchone()[0]
+        # as_of_date에 매니저 전원의 13F-HR이 공개된 최신 분기
+        latest_period = latest_public_period(conn, as_of_date, "total_scores")
         if latest_period is None:
             return {}
         rows = conn.execute(

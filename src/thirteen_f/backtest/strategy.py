@@ -8,6 +8,31 @@ from datetime import date
 import duckdb
 
 
+def latest_public_period(
+    conn: duckdb.DuckDBPyConnection, as_of_date: date, table: str
+) -> date | None:
+    """as_of_date에 쓸 수 있는 ``table``(total_scores·consensus_quarterly)의 최신 분기.
+
+    이 표들은 그 분기 매니저 전원의 보유를 합친 값이라, 첫 제출자가 아니라 **마지막 제출자의
+    13F-HR 원본이 공개된 뒤**(Spec §7.4 lookahead 차단)에야 분기를 쓸 수 있다. 정정본(13F-HR/A)은
+    원본이 이미 공개된 뒤의 소폭 수정이라 기준일에 넣지 않는다.
+    """
+    row = conn.execute(
+        f"""
+        SELECT MAX(t.period_of_report)
+        FROM {table} t
+        WHERE t.period_of_report IN (
+            SELECT period_of_report FROM filings
+            WHERE form_type = '13F-HR'
+            GROUP BY period_of_report
+            HAVING MAX(filed_at) <= ?
+        )
+        """,
+        (as_of_date,),
+    ).fetchone()
+    return row[0] if row else None
+
+
 class Strategy(ABC):
     name: str = "Strategy"
 

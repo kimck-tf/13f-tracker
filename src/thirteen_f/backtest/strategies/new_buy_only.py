@@ -6,7 +6,7 @@ from datetime import date
 
 import duckdb
 
-from thirteen_f.backtest.strategy import Strategy
+from thirteen_f.backtest.strategy import Strategy, latest_public_period
 
 
 class NewBuyOnly(Strategy):
@@ -21,17 +21,7 @@ class NewBuyOnly(Strategy):
     def get_target_positions(
         self, as_of_date: date, conn: duckdb.DuckDBPyConnection
     ) -> dict[str, float]:
-        latest_period = conn.execute(
-            """
-            SELECT MAX(c.period_of_report)
-            FROM consensus_quarterly c
-            WHERE EXISTS (
-                SELECT 1 FROM filings f
-                WHERE f.period_of_report = c.period_of_report AND f.filed_at <= ?
-            )
-            """,
-            (as_of_date,),
-        ).fetchone()[0]
+        latest_period = latest_public_period(conn, as_of_date, "consensus_quarterly")
         if latest_period is None:
             return {}
         rows = conn.execute(

@@ -5,6 +5,7 @@ import pytest
 
 from scripts.init_db import init_db
 from thirteen_f.backtest.strategies.consensus_top_k import ConsensusTopK
+from thirteen_f.backtest.strategies.new_buy_only import NewBuyOnly
 from thirteen_f.backtest.strategies.score_top_k import ScoreTopK
 
 
@@ -37,13 +38,15 @@ def conn(tmp_path):
             (date(2024, 3, 31), "037833500", "META", 1, 0, "c1", 0.3),
         ],
     )
-    # 가짜 filings (lookahead 검증용): 모두 filed_at=2024-05-15
-    c.execute(
+    # 가짜 filings (lookahead 검증용): c1은 2024-05-15, c2는 이틀 늦은 2024-05-17 제출
+    c.executemany(
         "INSERT INTO managers (cik, name, label, fund, style, active_since, cloning_score_weight) "
-        "VALUES ('c1','Test','t','f','value',2020,1.0)"
+        "VALUES (?, ?, ?, 'f', 'value', 2020, 1.0)",
+        [("c1", "Test", "t"), ("c2", "Late", "late")],
     )
-    c.execute(
-        "INSERT INTO filings VALUES ('acc1','c1','13F-HR',DATE '2024-03-31',DATE '2024-05-15',FALSE,NULL)"
+    c.executemany(
+        "INSERT INTO filings VALUES (?, ?, '13F-HR', DATE '2024-03-31', ?, FALSE, NULL)",
+        [("acc1", "c1", date(2024, 5, 15)), ("acc2", "c2", date(2024, 5, 17))],
     )
     yield c
     c.close()
@@ -72,3 +75,15 @@ def test_lookahead_blocks_future_scores(conn):
     # filed_at=2024-05-15 → as_of=2024-04-01에는 score 보이지 않아야
     targets = s.get_target_positions(as_of_date=date(2024, 4, 1), conn=conn)
     assert targets == {}
+
+
+@pytest.mark.parametrize("strategy", [
+    ScoreTopK(top_k=3),
+    ConsensusTopK(min_holders=1, top_k=3),
+    NewBuyOnly(min_holders=1, top_k=3),
+])
+def test_aggregate_scores_wait_until_every_manager_has_filed(conn, strategy):
+    """total_scores·consensus는 그 분기 매니저 전원의 보유를 합친 값이라, 첫 제출자(05-15)가 아니라
+    마지막 제출자(05-17)의 13F-HR이 공개된 뒤에야 쓸 수 있다 (실데이터: 2025Q3 Burry 11-03 vs 나머지 11-14)."""
+    assert strategy.get_target_positions(as_of_date=date(2024, 5, 16), conn=conn) == {}
+    assert strategy.get_target_positions(as_of_date=date(2024, 5, 17), conn=conn) != {}
