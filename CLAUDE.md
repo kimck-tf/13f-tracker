@@ -32,12 +32,13 @@ uv run thirteen-f collect --start 2024Q1    # 기본값 2011Q1 — 기존 DB와 
 uv run thirteen-f analyze                   # signals·consensus·total_scores를 지우고 전체 재계산
 uv run thirteen-f backtest --all --start 2024-01-02   # 기본 8개(Buffett·Druckenmiller 복제 포함), 실행마다 run 누적
 uv run thirteen-f backtest --strategy ScoreTopK --start 2024-01-02
+uv run python scripts/sweep_backtests.py    # 파라미터 탐색 — DB 사본(data/sweep/)에서 실행, 결과 CSV
 uv run thirteen-f export                    # DuckDB → src/thirteen_f/web/data/*.json
 uv run thirteen-f serve                     # http://127.0.0.1:8765, 장시간 실행이라 update에 없음
 uv run thirteen-f report --latest --open    # Quarto CLI 필요 → reports/output/_latest/
 uv run thirteen-f update                    # collect(--start 없이) → analyze → backtest --all → export → report, --skip-* 로 제외
 
-uv run pytest tests/unit                    # 회귀 기준: 175건, 약 30초, 네트워크 불필요
+uv run pytest tests/unit                    # 회귀 기준: 189건, 약 30초, 네트워크 불필요
 uv run pytest tests/unit/web/test_server.py::test_root_serves_static_index_html   # 단일 테스트
 uv run pytest tests/unit -k consensus       # 키워드 필터
 uv run pytest tests/integration             # 4건 (= -m integration), collect e2e는 VCR 카세트가 없으면 skip
@@ -68,7 +69,7 @@ DuckDB ─ export ─▶ web/data/*.json ─ serve(FastAPI) ─▶ SPA(web/stati
 
 어기면 에러 없이 결과만 틀어지므로, 관련 코드를 고칠 때마다 확인한다.
 
-- **Lookahead 차단** (Spec §7.4): 전략 SQL은 `filings.filed_at <= as_of_date`로 거른다. 13F는 분기말 후 최대 45일 뒤 공개되므로 `period_of_report` 기준으로 진입하면 미래 정보를 쓰게 된다. 전략별 검증은 `tests/unit/backtest/test_lookahead_guard.py` (MultiManager는 `test_multi_manager.py`).
+- **Lookahead 차단** (Spec §7.4): 전략 SQL은 `filings.filed_at <= as_of_date`로 거른다. 13F는 분기말 후 최대 45일 뒤 공개되므로 `period_of_report` 기준으로 진입하면 미래 정보를 쓰게 된다. 분기 집계 테이블(`total_scores`·`consensus_quarterly`)은 매니저 전원의 보유를 합친 값이라 그 분기 13F-HR 원본이 **모두** 제출된 뒤에만 쓴다 (`backtest/strategy.py:latest_public_period`) — 첫 제출자 기준으로 쓰면 최대 11일 앞선다. 전략별 검증은 `tests/unit/backtest/test_lookahead_guard.py`·`test_score_top_k.py` (MultiManager는 `test_multi_manager.py`).
 - **정정본** (Spec §5.2): 같은 (cik, period_of_report)에서 최신 `filed_at` 1건만 `superseded_by IS NULL`이다 (`collect/loader.py:mark_supersedes`). `holdings`를 직접 읽는 SQL은 이 조건을 붙인다 — 빠뜨리면 원본과 정정본이 이중 집계된다. 추가 공개분만 담은 NEW HOLDINGS 정정은 원본을 가리지 않도록 적재하지 않는다 (`collect/pipeline.py`).
 - **value 단위** (Spec §5.3): `holdings.value_usd`는 항상 달러. `filed_at < 2023-01-03` 필링은 천 달러로 보고돼 ×1000 한다 (`collect/parser.py:normalize_value`).
 - **holdings PK** `(accession_no, cusip, title_of_class, put_call)`: 뒤 두 컬럼은 `NOT NULL DEFAULT ''` — NULL이 들어가면 PK 중복 검사가 동작하지 않는다. 같은 PK로 분할 보고된 행은 적재 전에 합산한다 (`upsert_holdings`).

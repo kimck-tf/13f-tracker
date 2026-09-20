@@ -98,40 +98,45 @@ print(c.execute('''
 - [x] Phase 5 Code Review Fix — 12 finding 반영 (4 Critical + 8 Important): BACKTESTS 정밀 매칭 + SIM 배지, rate_limit GC, TICKER stop-list, export_stocks SQL 최적화(MAX_BY), chat_prompt injection 방어, ErrorScreen 친화 진단 등
 - [x] 2026Q2 반영 (2026-09-15) — 14명 중 13명 2026Q2 13F 수집 (138 filings / 13,008 holdings / 1,817 price tickers, 가격 2026-09-14까지). 명단 교정: Klarman·Einhorn·Pabrai CIK 수정, Greenblatt 제외, Ackman은 `extra_ciks`로 Pershing Square Inc. 합산. 수집 버그 수정: Berkshire information table 누락, NEW HOLDINGS 정정이 원본을 가림, NaN 가격 저장, CINS 코드(Chubb·Accenture·Linde 등 외국 소재 미국 상장사 130종목) 미매핑(매핑률 87.3% → 93.3%). 티커 변경 5건 매핑 갱신(BK→BNY 등). Buffett과 비교할 `SingleManagerClone(Druckenmiller)`를 기본 백테스트에 추가하고, 복제 전략이 같은 티커의 주식·옵션 행을 덮어쓰던 버그를 수정(합산, 풋 제외)
 
-**unit 175 passed · integration 3 passed + 1 skipped** (collect e2e는 로컬 VCR 카세트를 `RECORD_VCR=1`로 녹화해야 실행). (Frontend SPA는 단위 테스트 X — `thirteen-f serve` 후 브라우저 navigate 검증; LLM은 httpx mock + structured JSON schema 검증; Quarto는 사용자 CLI 설치 후 검증)
+- [x] 백테스트 최적화 (2026-09-20) — 벤치마크 NAV 갱신·집계형 lookahead 규칙·NewBuyOnly `min_positions` 수정 후 79개 설정 탐색(`scripts/sweep_backtests.py`, DB 사본). Calmar 기준 1위 ConsensusTopK(3,10)을 비롯한 계열별 최적값을 기본 스위트에 반영. 보고서 `docs/backtest-optimization-2026-09.md`
 
-## Backtest Snapshot (2024-01-02 ~ 2026-09-14, cost_bps=10, 2026-09-15 실행)
+**unit 189 passed · integration 3 passed + 1 skipped** (collect e2e는 로컬 VCR 카세트를 `RECORD_VCR=1`로 녹화해야 실행). (Frontend SPA는 단위 테스트 X — `thirteen-f serve` 후 브라우저 navigate 검증; LLM은 httpx mock + structured JSON schema 검증; Quarto는 사용자 CLI 설치 후 검증)
 
-| 전략 | CAGR | MDD | Sharpe | 이전(2026-05) CAGR |
-|---|--:|--:|--:|--:|
-| SingleManagerClone(Buffett) | 16.20% | 20.50% | 1.06 | 0.00% |
-| SingleManagerClone(Druckenmiller) | 35.95% | 26.15% | 1.48 | — (신규) |
-| ConsensusTopK(3, 20) | 21.59% | 18.03% | 1.34 | 14.87% |
-| ScoreTopK(20) | 16.40% | 23.01% | 1.03 | 24.46% |
-| ConvictionFollow(10) | 15.39% | 19.07% | 1.04 | 16.10% |
-| NewBuyOnly(2, 15) | 36.17% | 31.93% | 1.03 | 39.74% |
-| Ensemble(Buffett 0.4 / ScoreTopK 0.4 / ConsensusTopK 0.2) | 17.32% | 20.50% | 1.17 | 19.41% |
-| MultiManager(Buffett·Ackman·Tepper, 15) | 14.41% | 14.49% | 1.12 | 20.78% |
+## Backtest Snapshot (2024-01-02 ~ 2026-09-14, cost_bps=10, 2026-09-20 실행)
 
-같은 기간 SPY CAGR은 약 16.3%다.
+기본 8전략의 파라미터는 2026-09 탐색(`docs/backtest-optimization-2026-09.md`, 79개 설정, Calmar 기준)의 계열별 최적값이다. "이전 설정" 열은 탐색 전 파라미터로 2026-09-15에 실행한 값.
+
+| 전략 | CAGR | MDD | Sharpe | Calmar | 이전 설정 → CAGR |
+|---|--:|--:|--:|--:|---|
+| SingleManagerClone(Buffett) | 16.20% | 20.50% | 1.06 | 0.79 | 같음 → 16.20% |
+| SingleManagerClone(Druckenmiller) | 35.95% | 26.15% | 1.48 | 1.37 | 같음 → 35.95% |
+| **ConsensusTopK(3, 10)** — 탐색 1위 | **29.93%** | **15.93%** | 1.57 | **1.88** | ConsensusTopK(3, 20) → 21.59% |
+| ScoreTopK(40) | 19.67% | 18.85% | 1.24 | 1.04 | ScoreTopK(20) → 16.40% |
+| ConvictionFollow(3) | 21.79% | 18.43% | 1.35 | 1.18 | ConvictionFollow(10) → 15.39% |
+| NewBuyOnly(2, 15) | 39.59% | 31.79% | 1.10 | 1.25 | 같음 → 36.17% (lookahead 규칙 변경으로 달라짐) |
+| Ensemble(ConsensusTopK(3,10) 0.5 / ConsensusTopK(2,15) 0.5) | 28.28% | 15.77% | 1.59 | 1.79 | Ensemble(Buffett 0.4 / ScoreTopK 0.4 / ConsensusTopK 0.2) → 17.32% |
+| MultiManager(Burry·Dalio·Druckenmiller·Tepper, 20) | 33.06% | 23.76% | 1.34 | 1.39 | MultiManager(Buffett·Ackman·Tepper, 15) → 14.41% |
+
+같은 기간 SPY CAGR은 20.72%다 (모든 전략에 같은 값 — 벤치마크 NAV를 첫 매수 전에도 갱신하도록 엔진을 고쳤다). 탐색 보고서는 첫 13F 공개일(2024-05-13)부터 계산해 수치가 이 표보다 높다(예: ConsensusTopK(3,10) CAGR 35.3%).
 
 ### ⚠️ 해석 주의사항
 
 1. **이전 스냅샷의 `SingleManagerClone(Buffett)` CAGR 0%는 데이터 한계가 아니라 수집 버그였다**
-   Berkshire 제출물의 information table 파일명(`56757.xml` 같은 숫자 이름)을 찾지 못해 보유내역이 전부 빠졌고, 2025Q1은 NEW HOLDINGS 정정(4종목)이 원본(110건)을 가렸다. 2026-09에 수정했다. 같은 때 외국 소재 미국 상장사(Chubb·Accenture·Linde 등 CINS 코드 130종목)가 매핑되지 않던 버그를 고치고 매니저 명단(Klarman·Einhorn·Pabrai CIK, Greenblatt 제외, Ackman 법인 변경)을 바로잡아, 이전 스냅샷과 대부분의 전략 수치가 달라졌다. MultiManager가 20.78% → 14.41%로 내려간 것은 Buffett 보유가 처음 반영돼 상위 종목 구성이 바뀌었기 때문이다.
+   Berkshire 제출물의 information table 파일명(`56757.xml` 같은 숫자 이름)을 찾지 못해 보유내역이 전부 빠졌고, 2025Q1은 NEW HOLDINGS 정정(4종목)이 원본(110건)을 가렸다. 2026-09에 수정했다. 같은 때 외국 소재 미국 상장사(Chubb·Accenture·Linde 등 CINS 코드 130종목)가 매핑되지 않던 버그를 고치고 매니저 명단(Klarman·Einhorn·Pabrai CIK, Greenblatt 제외, Ackman 법인 변경)을 바로잡아, 2026-05 스냅샷과 대부분의 전략 수치가 달라졌다.
 
-2. **`NewBuyOnly` CAGR 36.17%는 과대 노출 가능성**
-   짧은 표본에서 small-cap 신규매수 consensus rotation 효과가 부풀려졌을 수 있고 MDD도 31.93%로 가장 크다. 편도 10bp 거래비용 가정도 단순하고 slippage·세금·차입 제한 미반영. → 더 긴 기간 데이터가 쌓이면 재검증 필요.
+2. **`NewBuyOnly`는 추천하지 않는다** — 2명 이상 신규매수 후보가 분기당 1~8종목뿐이라 NVDA 100%(2025-07), AER 100%(2026-04) 같은 단일 종목 분기가 있고, CAGR 39.59%·MDD 31.79%는 종목 두세 개의 결과다. 화면 비교용으로만 남겼다. 편도 10bp 거래비용 가정은 어느 전략이든 단순하고 slippage·세금·차입 제한 미반영.
 
 3. **백테스트 가용 시작일은 2024-01-02** (SPY 가격 데이터 시작점)
-   첫 13F(2024Q1)가 2024-05-13에 공개돼 그 전까지는 모든 전략이 현금이다. 약 32개월 short-cycle 검증이지 long-cycle 검증이 아니다. 엔진이 전략의 첫 매수 전 구간에는 SPY 수익률도 반영하지 않아 전략별 SPY CAGR이 15.6~16.3%로 조금씩 다르다.
+   첫 13F(2024Q1)가 2024-05-13에 공개돼 그 전까지는 모든 전략이 현금이고, 그만큼 CAGR이 SPY보다 불리하게 계산된다. 약 32개월 short-cycle 검증이지 long-cycle 검증이 아니다. 파라미터는 이 표본 안에서 고른 값이라 실제 기대 성과는 표보다 낮게 봐야 한다.
 
 4. **Buffett vs Druckenmiller 복제** — 두 복제 모두 첫 13F가 보이는 2024-05-15부터 투자한다. Druckenmiller 복제(누적 +128%)는 Natera(비중 13~18%)·Insmed·Teva 같은 소수 고확신 종목이 성과를 주도했고, 2025-04 관세 충격 때 하루 −7.7%·+12.9%로 변동도 크다. 복제는 콜옵션을 기초자산 명목금액의 롱 노출로 계산하고(분기별 비중 2.6~16.4%) 풋은 제외하므로, 레버리지·프리미엄이 있는 실제 포지션과 다르다. Duquesne이 금액을 천 달러 단위로 보고하는 문제는 제출물 안의 상대 비중만 쓰는 복제 수익률에는 영향이 없다.
 
 5. **매니저 구성** — Burry(Scion)는 2025Q3 이후 13F가 없어 최근 분기 컨센서스에서 빠진다. Ackman의 2026Q2는 Pershing Square Inc. 통합 보고라 HHH +900만 주, PSUS 신규처럼 법인이 직접 보유하던 지분이 합쳐져 보이는 변화가 섞여 있다(실제 매매 아님).
 
 6. **Lookahead bias 차단은 검증됨** (Spec §7.4)
-   5개 전략 × 미래 filing 노출 6 케이스 단위 테스트로 확인. `filings.filed_at <= as_of_date` 가드는 모든 전략 SQL에 강제됨.
+   5개 전략 × 미래 filing 노출 6 케이스 단위 테스트로 확인. `filings.filed_at <= as_of_date` 가드는 모든 전략 SQL에 강제됨. 매니저 전원의 집계(총점·컨센서스)를 쓰는 전략은 그 분기 13F가 모두 제출된 뒤에만 그 분기를 쓴다 (2026-09 수정 전에는 첫 제출자 기준이라 최대 11일 앞섰다).
+
+7. **탐색에서 발견한 정의상 한계** — 컨센서스 상위 종목에 GOOG·GOOGL이 따로 들어가 Alphabet이 사실상 두 자리를 차지하고, SPY 같은 ETF도 종목으로 집계된다. 같은 회사 복수 클래스 합산·ETF 제외는 아직 없다 (`docs/backtest-optimization-2026-09.md` §5·§6).
 
 ## LLM 보조 (선택)
 

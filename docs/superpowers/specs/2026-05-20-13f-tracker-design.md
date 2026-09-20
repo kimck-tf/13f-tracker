@@ -14,6 +14,8 @@
   - 가격 적재 시 종가가 NaN인 행(확정 전 거래일)은 저장하지 않는다(§5.1-1f). 저장하면 백테스트 NAV 전체가 NaN이 된다.
   - CUSIP 첫 글자가 알파벳인 CINS 코드(외국 소재 미국 상장사: Chubb·NU·Nebius 등)는 OpenFIGI `ID_CINS`로 조회한다(§5.1-1e). `ID_CUSIP`으로는 찾지 못해 전부 미매핑이었다.
   - 2026-09: 추적 대상은 14명이다(§1.2·§4.1). Klarman·Einhorn·Pabrai의 CIK가 다른 엔터티(Lone Pine Capital, Greenlight Capital Re, 개인 CIK)를 가리키던 것을 Baupost·DME Capital Management·Dalal Street로 바로잡았다. Ackman은 `managers.yaml`의 `extra_ciks`로 Pershing Square Inc. 보고분을 합산한다. Greenblatt(Gotham, 1,791종목)은 추종 가능한 확신 포트폴리오가 아니고 컨센서스 신호를 희석해 제외했다.
+  - 2026-09 백테스트 비교 공정성: 벤치마크 NAV를 전략의 첫 매수 전에도 매일 갱신한다(§7.3 — 이전엔 전략마다 `bench_cagr`가 달랐다). 집계형 전략(ScoreTopK·ConsensusTopK·NewBuyOnly)은 분기 13F-HR이 모두 제출된 뒤에만 그 분기를 쓴다(§7.4). `NewBuyOnly`에 `min_positions`(후보가 그보다 적으면 현금)를 추가했다(§7.2) — 신규매수 후보가 분기당 1~8종목이라 단일 종목 100% 분기가 있었다. 파라미터 비교는 `scripts/sweep_backtests.py`(DB 사본)로 한다.
+  - 2026-09-20 기본 suite 파라미터를 탐색 결과(`docs/backtest-optimization-2026-09.md`, Calmar 기준·평균 보유 8종목 이상)의 계열별 최적값으로 바꿨다(§7.2·§7.6): ConsensusTopK(3,10)·ScoreTopK(40)·ConvictionFollow(3)·MultiManager(Burry·Dalio·Druckenmiller·Tepper, 20)·Ensemble(ConsensusTopK(3,10) 0.5 + ConsensusTopK(2,15) 0.5). 1위는 ConsensusTopK(3,10)(2024-05-13~2026-09-14 CAGR 35.3%, MDD 15.9%, Calmar 2.22).
 
 ---
 
@@ -589,6 +591,8 @@ def run_backtest(
 ### 7.4 Lookahead 가드 + period_of_report 사용 규약
 
 `strategy.get_target_positions` 내 모든 SQL은 `WHERE filings.filed_at <= ?` 강제. 단위 테스트(`test_lookahead_guard.py`)로 미래 데이터 누출 시 즉시 실패하도록 검증.
+
+분기 집계 테이블(`total_scores`·`consensus_quarterly`)은 매니저 전원의 보유를 합친 값이므로, 그 분기의 13F-HR 원본이 **모두** 제출된 날(`MAX(filed_at)`, 정정본 제외)부터 쓴다 (`backtest/strategy.py:latest_public_period`, 2026-09 추가). 첫 제출자 기준으로 쓰면 실데이터에서 1~11일 앞선다 (2025Q3: Burry 11-03, 나머지 13명 11-12~14).
 
 **`period_of_report` 사용 규약**:
 - 백테스트 진입 트리거에 `period_of_report` 사용 금지 (lookahead bias 위험)
