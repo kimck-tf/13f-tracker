@@ -12,6 +12,7 @@ let MGR_MAP = {};       // {id: manager}
 let HOLDINGS = {};      // {mgrId: {ticker: [shares_M_per_quarter]}}
 let HOLDINGS_UNMAPPED = {}; // {mgrId: {cusip: {name_of_issuer, shares:[...]}}}
 let BACKTESTS = [];     // [{run_id, name, equity, dd, qrets, holdingsLog, metrics}]
+let TARGETS = null;     // targets.json — {as_of, rule, recommended, strategies:[{name, type, period, positions, sells, metrics}]} (Plan 탭)
 let LLM_SUMMARY = {};   // {[period]: {headline, top_signals}}
 let META = {};          // {generated_at, latest_period, data_version, ...}
 
@@ -578,7 +579,7 @@ async function bootstrapFromJson(baseUrl = "/data") {
     }
   }
 
-  const [meta, quarters, managers, stocks, holdings, holdingsUnmapped, backtests, llm] = await Promise.all([
+  const [meta, quarters, managers, stocks, holdings, holdingsUnmapped, backtests, llm, targets] = await Promise.all([
     fetchJson("meta.json"),
     fetchJson("quarters.json"),
     fetchJson("managers.json"),
@@ -587,6 +588,7 @@ async function bootstrapFromJson(baseUrl = "/data") {
     fetchJson("holdings_unmapped.json", {}),
     fetchJson("backtest.json", []),
     fetchJson("llm_summary.json", {}),
+    fetchJson("targets.json", null),
   ]);
 
   META = meta;
@@ -608,10 +610,11 @@ async function bootstrapFromJson(baseUrl = "/data") {
   HOLDINGS_UNMAPPED = holdingsUnmapped;
   BACKTESTS = backtests;
   LLM_SUMMARY = llm;
+  TARGETS = targets;
 
   Object.assign(window, {
     QUARTERS, Q_LABELS, Q_DATES, STOCKS, STOCK_MAP, MANAGERS, MGR_MAP,
-    HOLDINGS, HOLDINGS_UNMAPPED, BACKTESTS, LLM_SUMMARY, META,
+    HOLDINGS, HOLDINGS_UNMAPPED, BACKTESTS, LLM_SUMMARY, TARGETS, META,
   });
   return META;
 }
@@ -631,7 +634,7 @@ async function fetchDailyPx(ticker, baseUrl = "/data") {
 // expose globals + bootstrap (loaded as a plain script tag)
 Object.assign(window, {
   QUARTERS, Q_LABELS, Q_DATES, STOCKS, STOCK_MAP, MANAGERS, MGR_MAP, HOLDINGS,
-  HOLDINGS_UNMAPPED, BACKTESTS, LLM_SUMMARY, META, SECTOR_COLORS,
+  HOLDINGS_UNMAPPED, BACKTESTS, LLM_SUMMARY, TARGETS, META, SECTOR_COLORS,
   classifyAction, positionValue, managerTotal, managerPortfolio,
   quarterActivity, tickerHolders, tickerCrowdedness, quarterSummary, spotlight,
   followStrategyEquity, runStrategy, pickByType,

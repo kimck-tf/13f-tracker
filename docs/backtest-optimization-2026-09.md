@@ -122,6 +122,6 @@ uv run thirteen-f targets --strategy ConsensusTopK       # 지금의 목표 비�
 uv run thirteen-f targets --strategy ConsensusTopK --as-of 2026-05-20   # 과거 시점 기준
 ```
 
-`targets`는 백테스트와 같은 `get_target_positions`를 호출하므로 lookahead 규칙도 같다 — 그 분기 13F가 모두 제출된 뒤(2·5·8·11월 중순)에 목록이 바뀌고, 그 사이에는 바뀌지 않는다.
+`targets`는 백테스트와 같은 `get_target_positions`를 호출하므로 lookahead 규칙도 같다 — 그 분기 13F가 모두 제출된 뒤(2·5·8·11월 중순)에 목록이 바뀌고, 그 사이에는 바뀌지 않는다. 같은 내용을 SPA **Plan 탭**(`#/plan`)에서도 본다: 기본 8전략 비교표(권장 배지) → 선택 전략의 목표 비중과 직전 목록 대비 매수/유지/매도 → 주의사항. 데이터는 `export`가 만드는 `targets.json`.
 
 CSV 컬럼: `full_*`(전 구간), `h1_*`(2024-05-13~2025-08-14), `h2_*`(2025-08-15~2026-09-14) 각각 `cagr, mdd, sharpe, calmar, bench_cagr, alpha_cagr, avg_positions, min_positions, invested_frac, days`. run 곡선·보유 내역은 `data/sweep/13f.sweep.duckdb`의 `backtest_*` 테이블(run_id는 CSV에).

@@ -47,13 +47,15 @@ EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 �
 
 ## web (Phase 5)
 
-- **exporter** (`web/exporter.py`, 호출 순서는 `web/cli.py:do_export`): managers → quarters → stocks → prices_split → holdings → backtest → meta. 파일별 형태는 `DATA_FORMATS.md`.
+- **exporter** (`web/exporter.py`, 호출 순서는 `web/cli.py:do_export`): managers → quarters → stocks → prices_split → holdings → backtest → targets → meta. 파일별 형태는 `DATA_FORMATS.md`.
   - `export_holdings`는 분기 `q`마다 `period_of_report = q`이고 `filed_at <= q + 180일`인 유효본만 쓴다. 45일 공시 기한을 넘긴 늦은 제출도 180일까지는 포함한다.
   - `export_backtest`는 DB의 모든 run을 `created_at DESC`로 넣는다.
+  - `export_targets`는 `runner.default_suite()` 전략마다 export 시점의 `get_target_positions`와 그 분기 공개 전날의 결과를 비교해 buy/keep/sell을 매긴다(`thirteen-f targets`와 같은 코드). 권장 전략은 최신 run 중 Calmar 1위(평균 보유 8종목 이상, `RECOMMEND_MIN_POSITIONS`).
 - **schemas** (`web/schemas.py`): Pydantic 모델은 `QuarterEntry`, `Manager`, `Stock`, `Meta`이고 exporter는 그중 `QuarterEntry`, `Manager`, `Meta`만 쓴다 (stocks는 dict로 직접 생성). holdings·backtest·prices JSON의 형태는 exporter 코드와 `hf-data.js` 사용처가 사실상의 계약이다.
 - **server** (`web/server.py`): `GET /api/health`, `POST /api/ask`, `/data`(StaticFiles), `/`(StaticFiles `html=True`). `/` 마운트가 모든 경로를 받으므로 새 `/api/*` 라우트는 파일 끝 `app.mount(...)`보다 위에 정의한다. `/api/ask`는 IP당 분당 10회 제한(프로세스 메모리) → 요청마다 DuckDB read-only 연결 → `llm.summary.chat_reply`.
 - **SPA** (`web/static/`): 빌드 단계가 없다. `index.html`이 CDN에서 React 18 UMD와 Babel standalone을 받고 `hf-data.js` → `tweaks-panel.jsx` → `hf-components.jsx` → 화면별 `.jsx` → `hf-app.jsx`(hash router, 기본 `#/home`) 순서로 로드한다. 파일끼리는 각 파일 끝 `Object.assign(window, {...})`로 노출한 전역을 쓴다.
-  - `hf-data.js:bootstrapFromJson`이 JSON 8개를 `Promise.all`로 받아 전역(`META`, `QUARTERS`, `STOCKS`, `MANAGERS`, `HOLDINGS`, `HOLDINGS_UNMAPPED`, `BACKTESTS`, `LLM_SUMMARY`)을 채운다. 일봉은 `fetchDailyPx(ticker)`로 필요할 때만 받는다.
+  - `hf-data.js:bootstrapFromJson`이 JSON 9개를 `Promise.all`로 받아 전역(`META`, `QUARTERS`, `STOCKS`, `MANAGERS`, `HOLDINGS`, `HOLDINGS_UNMAPPED`, `BACKTESTS`, `LLM_SUMMARY`, `TARGETS`)을 채운다. 일봉은 `fetchDailyPx(ticker)`로 필요할 때만 받는다.
+  - Plan 화면(`hf-plan.jsx`, `#/plan`)은 `TARGETS`만 읽어 알고리즘 선정 표(최신 run 지표, 권장 배지) → 선택 전략의 실행 계획(목표 비중, buy/keep/sell, 다음 리밸런스일) → 주의사항(GOOG+GOOGL 동일 회사, ETF 포함)을 표시한다. `targets.json`이 없으면 export 안내만 낸다.
   - Backtest 화면(`hf-backtest.jsx:matchBackendRun`)은 `BACKTESTS`에서 `name`이 전략 type으로 시작하는 첫 run(=최신)을 쓴다. `SingleManagerClone`은 매니저 전체 이름의 마지막 단어가 `(…)` 안에 있어야 매칭된다. 못 찾으면 `hf-data.js:runStrategy` 브라우저 시뮬레이션(SIM 배지, KPI 비교 제외)으로 대신한다.
 
 ## llm (Phase 4+ / 5)

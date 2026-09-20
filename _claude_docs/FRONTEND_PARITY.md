@@ -20,6 +20,7 @@ Phase 5 SPA는 데이터의 1차 출처를 명확히 분리한다. 백엔드 exp
 | `quarterActivity(qIdx)` | Frontend — 모든 매니저 × 종목 action 집계 | spotlight 추출 입력 |
 | `spotlight(qIdx)` | Frontend — quarterActivity 최대 abs(deltaValue) | UI 강조용 |
 | `BACKTESTS[]` (equity/dd/qrets/holdingsLog/metrics) | Backend (`exporter.export_backtest`) — 분기말 resample + backtest_holdings | `test_export_backtest_writes_runs_with_holdings_and_metrics` |
+| `TARGETS` (Plan 탭 — 전략별 현재 목표 비중·직전 대비 buy/keep/sell·권장 전략) | Backend (`exporter.export_targets`) — 백테스트와 같은 `get_target_positions`(as_of=export 시점)와 `latest_public_period`, 권장은 최신 run의 Calmar 1위(평균 보유 8종목 이상) | `tests/unit/web/test_exporter_targets.py`. frontend(`hf-plan.jsx`)는 정렬·라벨·경고(GOOG+GOOGL, ETF)만 계산. `thirteen-f targets`와 같은 결과 |
 | `runStrategy(...)` (실시간 backtest in browser) | Frontend (`hf-data.js`) — STOCKS.px 기반 시뮬 (mock-era 잔존, 디자인 prototype 용도) | **실거래 의사결정에 사용 금지**. backend의 `thirteen-f backtest`만 신뢰. Frontend strategy는 BuilderScreen에서 빠른 비교 UI 용도. |
 | daily close series (per ticker) | Backend (`exporter.export_prices_split`) — prices/{TICKER}.json | StockScreen에서 `fetchDailyPx(ticker)` lazy 호출. unit test: `test_export_prices_split_per_ticker` |
 | `LLM_SUMMARY` (분기별 headline/top_signals) | **미구현** — `exporter.export_llm_summary`가 없어 `llm_summary.json`이 생성되지 않음. frontend는 `{}`로 대체 | 구현 시 이 행 갱신. /api/ask는 실시간 |

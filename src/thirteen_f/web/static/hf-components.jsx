@@ -354,6 +354,7 @@ function Sidebar({ route, onNav }) {
   { id: "qoq", label: "Changes", k: "Q" },
   { id: "consensus", label: "Consensus", k: "C" },
   { id: "backtest", label: "Backtest", k: "B" },
+  { id: "plan", label: "Plan", k: "P" },
   { id: "builder", label: "Builder", k: "X" },
   { id: "ask", label: "Ask", k: "A" }];
 

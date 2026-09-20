@@ -7,7 +7,7 @@
 - **수집**: SEC EDGAR에서 분기별 13F-HR 공시 직접 파싱 (httpx + lxml)
 - **분석**: 분기 간 변화·conviction·continuity·consensus 4 시그널 + 가중 종합 점수
 - **백테스트**: 7종 전략 8개 구성 (SingleManagerClone(Buffett·Druckenmiller) / ConsensusTopK / ScoreTopK / ConvictionFollow / NewBuyOnly / Ensemble / **MultiManager**) + Lookahead-safe 검증 + 분기 holdings snapshot
-- **시각화**: 9페이지 정적 SPA (Home / Managers / Compare / Stocks / Changes / Consensus / Backtest / Builder / Ask) — React 18 + Pretendard, FastAPI 정적 서버
+- **시각화**: 10페이지 정적 SPA (Home / Managers / Compare / Stocks / Changes / Consensus / Backtest / **Plan** / Builder / Ask) — React 18 + Pretendard, FastAPI 정적 서버. Plan은 백테스트 비교 → 권장 전략 → 지금의 목표 비중·매수/매도 목록
 - **리포트**: Quarto 6 챕터 단일 HTML (선택: Gemini LLM 분기 헤드라인 요약 + Top 10 시그널 해석)
 - **Ask LLM**: `/api/ask` 엔드포인트 (Gemini chat with structured cards, per-IP rate limit 10/min, prompt injection 방어)
 
@@ -98,7 +98,7 @@ print(c.execute('''
 - [x] Phase 5 Code Review Fix — 12 finding 반영 (4 Critical + 8 Important): BACKTESTS 정밀 매칭 + SIM 배지, rate_limit GC, TICKER stop-list, export_stocks SQL 최적화(MAX_BY), chat_prompt injection 방어, ErrorScreen 친화 진단 등
 - [x] 2026Q2 반영 (2026-09-15) — 14명 중 13명 2026Q2 13F 수집 (138 filings / 13,008 holdings / 1,817 price tickers, 가격 2026-09-14까지). 명단 교정: Klarman·Einhorn·Pabrai CIK 수정, Greenblatt 제외, Ackman은 `extra_ciks`로 Pershing Square Inc. 합산. 수집 버그 수정: Berkshire information table 누락, NEW HOLDINGS 정정이 원본을 가림, NaN 가격 저장, CINS 코드(Chubb·Accenture·Linde 등 외국 소재 미국 상장사 130종목) 미매핑(매핑률 87.3% → 93.3%). 티커 변경 5건 매핑 갱신(BK→BNY 등). Buffett과 비교할 `SingleManagerClone(Druckenmiller)`를 기본 백테스트에 추가하고, 복제 전략이 같은 티커의 주식·옵션 행을 덮어쓰던 버그를 수정(합산, 풋 제외)
 
-- [x] 백테스트 최적화 (2026-09-20) — 벤치마크 NAV 갱신·집계형 lookahead 규칙·NewBuyOnly `min_positions` 수정 후 79개 설정 탐색(`scripts/sweep_backtests.py`, DB 사본). Calmar 기준 1위 ConsensusTopK(3,10)을 비롯한 계열별 최적값을 기본 스위트에 반영. 보고서 `docs/backtest-optimization-2026-09.md`
+- [x] 백테스트 최적화 (2026-09-20) — 벤치마크 NAV 갱신·집계형 lookahead 규칙·NewBuyOnly `min_positions` 수정 후 79개 설정 탐색(`scripts/sweep_backtests.py`, DB 사본). Calmar 기준 1위 ConsensusTopK(3,10)을 비롯한 계열별 최적값을 기본 스위트에 반영. 보고서 `docs/backtest-optimization-2026-09.md`. `thirteen-f targets` 명령과 SPA **Plan** 탭(비교표 → 권장 전략 → 지금의 목표 비중·매수/매도 목록, `targets.json`) 추가
 
 **unit 189 passed · integration 3 passed + 1 skipped** (collect e2e는 로컬 VCR 카세트를 `RECORD_VCR=1`로 녹화해야 실행). (Frontend SPA는 단위 테스트 X — `thirteen-f serve` 후 브라우저 navigate 검증; LLM은 httpx mock + structured JSON schema 검증; Quarto는 사용자 CLI 설치 후 검증)
 
@@ -161,7 +161,8 @@ print(c.execute('''
 | `thirteen-f collect [--start QUARTER]` | 1 | done |
 | `thirteen-f analyze [--threshold FLOAT]` | 2 | done |
 | `thirteen-f backtest [--strategy NAME / --all] [--start --end --cost-bps]` | 3 | done (기본 8개: 7종 전략 + Druckenmiller 복제) |
-| `thirteen-f export [--out DIR]` | 5 | done (DuckDB → JSON dump for SPA) |
+| `thirteen-f targets --strategy NAME [--as-of DATE]` | 3 | done (전략이 지금 지시하는 목표 비중 — 분기마다 매매 목록 확인) |
+| `thirteen-f export [--out DIR]` | 5 | done (DuckDB → JSON dump for SPA, `targets.json` 포함) |
 | `thirteen-f serve [--host --port --reload]` | 5 | done (FastAPI 정적 SPA on :8765) |
 | `thirteen-f report [--quarter Q / --latest] [--open]` | 4 | done (Quarto CLI 필요) |
 | `thirteen-f update [--skip-collect / --skip-backtest / --skip-export / --skip-report]` | all | done |

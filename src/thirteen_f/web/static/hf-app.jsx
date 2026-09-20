@@ -149,6 +149,7 @@ function renderScreen({ root, sub, route, quarter, setQuarter }) {
     case "stocks":    return sub ? <StockScreen ticker={sub} {...props} /> : <StocksListScreen {...props} />;
     case "compare":   return <CompareScreen {...props} />;
     case "backtest":  return <BacktestScreen {...props} />;
+    case "plan":      return <PlanScreen {...props} />;
     case "ask":       return <AskScreen {...props} />;
     case "qoq":       return <QoQScreen {...props} />;
     case "consensus": return <ConsensusScreen {...props} />;
