@@ -10,13 +10,21 @@ from thirteen_f.backtest.strategy import Strategy, latest_public_period
 
 
 class NewBuyOnly(Strategy):
-    def __init__(self, min_holders: int = 2, top_k: int = 15) -> None:
+    def __init__(self, min_holders: int = 2, top_k: int = 15, min_positions: int = 1) -> None:
         self.min_holders = min_holders
         self.top_k = top_k
-        self.name = f"NewBuyOnly({min_holders},{top_k})"
+        # 후보가 이보다 적으면 현금 보유 — 후보 풀이 분기당 1~8종목이라 단일 종목 100%가
+        # 나올 수 있다
+        self.min_positions = min_positions
+        suffix = f",min{min_positions}" if min_positions > 1 else ""
+        self.name = f"NewBuyOnly({min_holders},{top_k}{suffix})"
 
     def params_json(self) -> str:
-        return json.dumps({"min_holders": self.min_holders, "top_k": self.top_k})
+        return json.dumps({
+            "min_holders": self.min_holders,
+            "top_k": self.top_k,
+            "min_positions": self.min_positions,
+        })
 
     def get_target_positions(
         self, as_of_date: date, conn: duckdb.DuckDBPyConnection
@@ -38,7 +46,7 @@ class NewBuyOnly(Strategy):
             """,
             (latest_period, self.min_holders, self.top_k),
         ).fetchall()
-        if not rows:
+        if not rows or len(rows) < self.min_positions:
             return {}
         w = 1.0 / len(rows)
         return {r[0]: w for r in rows}

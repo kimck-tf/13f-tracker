@@ -87,3 +87,24 @@ def test_aggregate_scores_wait_until_every_manager_has_filed(conn, strategy):
     마지막 제출자(05-17)의 13F-HR이 공개된 뒤에야 쓸 수 있다 (실데이터: 2025Q3 Burry 11-03 vs 나머지 11-14)."""
     assert strategy.get_target_positions(as_of_date=date(2024, 5, 16), conn=conn) == {}
     assert strategy.get_target_positions(as_of_date=date(2024, 5, 17), conn=conn) != {}
+
+
+def test_new_buy_only_holds_cash_below_min_positions(conn):
+    """신규매수 후보(new_buy_count >= min_holders)가 min_positions보다 적으면 소수 종목에 몰빵하지
+    않고 현금을 든다 (실데이터: NVDA 100%, AER 100% 분기)."""
+    # 후보: AAPL(new_buy 2), MSFT(new_buy 1) → 2종목
+    assert NewBuyOnly(min_holders=1, top_k=5, min_positions=3).get_target_positions(
+        as_of_date=date(2024, 6, 1), conn=conn
+    ) == {}
+    targets = NewBuyOnly(min_holders=1, top_k=5, min_positions=2).get_target_positions(
+        as_of_date=date(2024, 6, 1), conn=conn
+    )
+    assert set(targets) == {"AAPL", "MSFT"}
+
+
+def test_new_buy_only_name_and_params_include_min_positions():
+    # 기본값(min_positions=1)은 기존 run 이름과 같아야 SPA·README의 매칭이 유지된다
+    assert NewBuyOnly(min_holders=2, top_k=15).name == "NewBuyOnly(2,15)"
+    s = NewBuyOnly(min_holders=2, top_k=15, min_positions=5)
+    assert s.name == "NewBuyOnly(2,15,min5)"
+    assert '"min_positions": 5' in s.params_json()
