@@ -38,6 +38,7 @@ gitignore 대상이며 `uv run thirteen-f export`로 다시 만든다. SPA는 `/
 | `holdings_unmapped.json` | `export_holdings` | `{<manager id>: {<cusip>: {name_of_issuer, shares: [...]}}}` | `HOLDINGS_UNMAPPED` (없으면 `{}`) |
 | `backtest.json` | `export_backtest` | `[{run_id, name, params, equity, dd, qrets, benchEquity, holdingsLog, metrics}]` — DB의 모든 run | `BACKTESTS` (없으면 `[]`) |
 | `prices/<TICKER>.json` | `export_prices_split` | `{date: [...], close: [...]}` 일봉 | `fetchDailyPx(ticker)` |
+| `targets.json` | `export_targets` | `{as_of, rule, recommended, strategies: [{name, type, period, public_since, next_rebalance, metrics, positions: [{ticker, weight, prevWeight, action: "buy"\|"keep", holders, holderIds, name, sector, isEtf, lastClose, lastCloseDate}], sells: [...]}]}` — 기본 suite 8전략의 **현재** 목표 비중(백테스트와 같은 `get_target_positions`)과 직전 목록(그 분기 공개 전날 기준) 대비 diff. `recommended`는 최신 run 중 Calmar 1위(평균 보유 8종목 이상) | `TARGETS` (없으면 `null`, Plan 탭이 안내 표시) |
 | `llm_summary.json` | 없음 — 만드는 코드가 아직 없다 | — | `LLM_SUMMARY` (`{}`로 대체) |
 
 분기 배열(`px`, 보유 주식 수)의 인덱스는 `quarters.json` 순서와 같다.

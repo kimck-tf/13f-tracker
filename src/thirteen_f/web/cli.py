@@ -47,6 +47,9 @@ def do_export(out: Path, llm_available: bool, db_path: str) -> None:
         typer.echo("Exporting backtest ...")
         exporter.export_backtest(conn, out)
 
+        typer.echo("Exporting targets ...")
+        exporter.export_targets(conn, out)
+
         exporter.export_meta(conn, out, llm_available=llm_available)
         typer.echo(f"OK Exported to {out}")
     finally:

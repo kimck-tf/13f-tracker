@@ -12,9 +12,14 @@ from pathlib import Path
 
 import duckdb
 
-from thirteen_f.core.dates import quarter_label
+from thirteen_f.backtest.runner import default_suite
+from thirteen_f.backtest.strategy import latest_public_period
+from thirteen_f.core.dates import parse_quarter, quarter_end, quarter_label
 
 from .schemas import Manager, Meta, QuarterEntry
+
+# Plan 탭의 권장 전략 조건: 최신 run 중 Calmar 1위이되 평균 보유 종목이 이 값 이상 (몰빵 설정 제외)
+RECOMMEND_MIN_POSITIONS = 8
 
 
 def _avatar_from_name(name: str) -> str:
@@ -361,6 +366,140 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
             },
         })
     (out_dir / "backtest.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _next_rebalance(period: date) -> date:
+    """다음 분기말 + 45일(13F 법정 기한). 주말이면 다음 월요일 — 공휴일은 보지 않는 예상값."""
+    year, q = parse_quarter(quarter_label(period))
+    year, q = (year + 1, 1) if q == 4 else (year, q + 1)
+    deadline = quarter_end(f"{year}Q{q}") + timedelta(days=45)
+    while deadline.weekday() >= 5:
+        deadline += timedelta(days=1)
+    return deadline
+
+
+def _latest_run_metrics(conn: duckdb.DuckDBPyConnection) -> dict[str, dict]:
+    """strategy_name → 최신 run의 지표 (+ 리밸런스당 평균 보유 종목 수)."""
+    rows = conn.execute(
+        """
+        SELECT r.strategy_name, m.cagr, m.mdd, m.sharpe, m.calmar, m.bench_cagr, m.total_return,
+               (SELECT AVG(n) FROM (
+                   SELECT COUNT(*) AS n FROM backtest_holdings h
+                   WHERE h.run_id = r.run_id GROUP BY h.rebalance_date)) AS avg_positions
+        FROM backtest_runs r JOIN backtest_metrics m USING (run_id)
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY r.strategy_name ORDER BY r.created_at DESC) = 1
+        """
+    ).fetchall()
+    return {
+        name: {
+            "cagr": cagr, "maxDD": mdd, "sharpe": sharpe, "calmar": calmar,
+            "benchCagr": bench, "totalRet": total,
+            "avgPositions": float(avg) if avg is not None else 0.0,
+        }
+        for name, cagr, mdd, sharpe, calmar, bench, total, avg in rows
+    }
+
+
+def export_targets(
+    conn: duckdb.DuckDBPyConnection, out_dir: Path, as_of: date | None = None
+) -> None:
+    """Export ``targets.json`` — 기본 suite 전략별 현재 목표 비중 + 직전 목록 대비 diff (Plan 탭).
+
+    백테스트와 같은 ``get_target_positions``를 부르므로 ``thirteen-f targets``와 결과가 같다.
+    직전 목록은 현재 분기가 공개되기 전날(``public_since`` - 1일) 기준이다.
+    ``recommended``는 최신 run 중 Calmar 1위(평균 보유 ``RECOMMEND_MIN_POSITIONS`` 이상).
+    """
+    as_of = as_of or date.today()
+    period = latest_public_period(conn, as_of, "total_scores")
+    public_since = None
+    if period is not None:
+        row = conn.execute(
+            "SELECT MAX(filed_at) FROM filings WHERE form_type = '13F-HR' AND period_of_report = ?",
+            (period,),
+        ).fetchone()
+        public_since = row[0] if row else None
+    label_by_cik = dict(conn.execute("SELECT cik, label FROM managers").fetchall())
+    holders_by_ticker: dict[str, tuple[int, list[str]]] = {}
+    if period is not None:
+        for ticker, count, ciks in conn.execute(
+            "SELECT ticker, holder_count, holder_ciks FROM consensus_quarterly "
+            "WHERE period_of_report = ? AND ticker IS NOT NULL",
+            (period,),
+        ).fetchall():
+            ids = [label_by_cik[c].lower() for c in (ciks or "").split(",") if c in label_by_cik]
+            holders_by_ticker[ticker] = (int(count), ids)
+    metrics_by_name = _latest_run_metrics(conn)
+
+    def describe(ticker: str) -> dict:
+        row = conn.execute(
+            "SELECT ANY_VALUE(name), ANY_VALUE(sector), BOOL_OR(is_etf) FROM cusip_ticker_map "
+            "WHERE ticker = ?",
+            (ticker,),
+        ).fetchone()
+        px = conn.execute(
+            "SELECT close, date FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1", (ticker,)
+        ).fetchone()
+        holders, ids = holders_by_ticker.get(ticker, (None, []))
+        return {
+            "name": (row[0] if row else None) or "",
+            "sector": (row[1] if row else None) or "",
+            "isEtf": bool(row[2]) if row and row[2] is not None else False,
+            "holders": holders,
+            "holderIds": ids,
+            "lastClose": float(px[0]) if px and px[0] is not None else None,
+            "lastCloseDate": px[1].isoformat() if px else None,
+        }
+
+    strategies = []
+    for strat in default_suite():
+        current = strat.get_target_positions(as_of_date=as_of, conn=conn)
+        previous = (
+            strat.get_target_positions(as_of_date=public_since - timedelta(days=1), conn=conn)
+            if public_since else {}
+        )
+        positions = [
+            {
+                "ticker": t, "weight": w,
+                "prevWeight": previous.get(t),
+                "action": "keep" if t in previous else "buy",
+                **describe(t),
+            }
+            for t, w in sorted(current.items(), key=lambda kv: (-kv[1], kv[0]))
+        ]
+        sells = [
+            {"ticker": t, "prevWeight": w, **describe(t)}
+            for t, w in sorted(previous.items(), key=lambda kv: (-kv[1], kv[0]))
+            if t not in current
+        ]
+        strategies.append({
+            "name": strat.name,
+            "type": type(strat).__name__,
+            "period": period.isoformat() if period else None,
+            "public_since": public_since.isoformat() if public_since else None,
+            "next_rebalance": _next_rebalance(period).isoformat() if period else None,
+            "metrics": metrics_by_name.get(strat.name),
+            "positions": positions,
+            "sells": sells,
+        })
+
+    eligible = [
+        s for s in strategies
+        if s["metrics"] and s["metrics"]["avgPositions"] >= RECOMMEND_MIN_POSITIONS
+    ]
+    recommended = max(eligible, key=lambda s: s["metrics"]["calmar"])["name"] if eligible else None
+    payload = {
+        "as_of": as_of.isoformat(),
+        "rule": (
+            "기본 전략의 최신 백테스트 중 Calmar(CAGR÷MDD) 1위, "
+            f"평균 보유 {RECOMMEND_MIN_POSITIONS}종목 이상"
+        ),
+        "recommended": recommended,
+        "strategies": strategies,
+    }
+    (out_dir / "targets.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
