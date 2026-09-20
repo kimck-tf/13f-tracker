@@ -30,6 +30,7 @@ htmlcov/
 # 데이터 / 결과물 (커밋 금지)
 data/*.duckdb
 data/*.duckdb.wal
+data/sweep/
 data/raw/
 data/processed/
 data/cache/
