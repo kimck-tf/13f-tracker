@@ -470,8 +470,9 @@ const STRATEGY_TYPES = [
     desc: "여러 매니저의 Top 포지션을 합쳐 점수 순으로 선정",
     color: "#0e7490",
     params: [
-      { key: "mgrIds", label: "Managers", kind: "managerList", default: ["buffett", "ackman", "tepper"] },
-      { key: "topN", label: "Top N", kind: "int", min: 3, max: 30, default: 15 },
+      // 기본값은 backend runner.default_suite()와 맞춘다 (2026-09 탐색 결과) — chip 라벨이 backend run과 어긋나지 않게
+      { key: "mgrIds", label: "Managers", kind: "managerList", default: ["burry", "dalio", "druckenmiller", "tepper"] },
+      { key: "topN", label: "Top N", kind: "int", min: 3, max: 30, default: 20 },
       { key: "weighting", label: "Weighting", kind: "enum", options: ["equal", "byscore"], default: "equal" },
     ],
     summary: p => `${(p.mgrIds || []).length} mgrs · top ${p.topN || 15}`,
@@ -493,9 +494,9 @@ const STRATEGY_TYPES = [
     desc: "Conviction × #holders × Persistence 점수 상위 K",
     color: "#7c3aed",
     params: [
-      { key: "K", label: "Top K", kind: "int", min: 5, max: 30, default: 20 },
+      { key: "K", label: "Top K", kind: "int", min: 5, max: 40, default: 40 },
     ],
-    summary: p => `top ${p.K || 20}`,
+    summary: p => `top ${p.K || 40}`,
   },
   {
     type: "ConvictionFollow",
@@ -514,9 +515,9 @@ const STRATEGY_TYPES = [
     color: "#c8261e",
     params: [
       { key: "minHolders", label: "Min holders", kind: "int", min: 2, max: 5, default: 3 },
-      { key: "K", label: "Top K", kind: "int", min: 5, max: 30, default: 20 },
+      { key: "K", label: "Top K", kind: "int", min: 5, max: 30, default: 10 },
     ],
-    summary: p => `≥${p.minHolders || 3} mgrs · top ${p.K || 20}`,
+    summary: p => `≥${p.minHolders || 3} mgrs · top ${p.K || 10}`,
   },
   {
     type: "Ensemble",
@@ -525,9 +526,8 @@ const STRATEGY_TYPES = [
     color: "#0a0d14",
     params: [
       { key: "components", label: "Components", kind: "components", default: [
-        { type: "SingleManagerClone", params: { mgrId: "buffett", topN: 10 }, weight: 0.4 },
-        { type: "ScoreTopK", params: { K: 20 }, weight: 0.4 },
-        { type: "ConsensusTopK", params: { minHolders: 3, K: 20 }, weight: 0.2 },
+        { type: "ConsensusTopK", params: { minHolders: 3, K: 10 }, weight: 0.5 },
+        { type: "ConsensusTopK", params: { minHolders: 2, K: 15 }, weight: 0.5 },
       ]},
     ],
     summary: p => `${(p.components || []).length} components`,

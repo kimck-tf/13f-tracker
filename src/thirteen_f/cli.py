@@ -100,12 +100,15 @@ def backtest(
     from thirteen_f.backtest.strategies.score_top_k import ScoreTopK
     from thirteen_f.backtest.strategies.single_manager import SingleManagerClone
 
+    # runner.default_suite()와 같은 파라미터 (2026-09 탐색, docs/backtest-optimization-2026-09.md)
     registry = {
-        "ScoreTopK": lambda: ScoreTopK(top_k=20),
-        "ConsensusTopK": lambda: ConsensusTopK(min_holders=3, top_k=20),
-        "ConvictionFollow": lambda: ConvictionFollow(top_k=10),
+        "ScoreTopK": lambda: ScoreTopK(top_k=40),
+        "ConsensusTopK": lambda: ConsensusTopK(min_holders=3, top_k=10),
+        "ConvictionFollow": lambda: ConvictionFollow(top_k=3),
         "NewBuyOnly": lambda: NewBuyOnly(min_holders=2, top_k=15),
-        "MultiManager": lambda: MultiManager(mgr_labels=["Buffett", "Ackman", "Tepper"], top_k=15),
+        "MultiManager": lambda: MultiManager(
+            mgr_labels=["Burry", "Dalio", "Druckenmiller", "Tepper"], top_k=20
+        ),
     }
     if strategy.startswith("SingleManagerClone("):
         label = strategy.split("(")[1].rstrip(")")
