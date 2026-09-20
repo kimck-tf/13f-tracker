@@ -115,6 +115,9 @@ def run_backtest(
                 if p_today and p_yest and p_yest > 0:
                     r += w * (p_today / p_yest - 1)
             portfolio_value *= (1 + r)
+        # 벤치마크는 보유 종목이 없는 날(첫 매수 전)에도 매일 갱신 —
+        # 전략마다 bench_cagr가 달라지지 않게
+        if i > 0:
             p_b_t = prices_today.get(benchmark)
             if last_bench_price and p_b_t:
                 bench_value *= p_b_t / last_bench_price

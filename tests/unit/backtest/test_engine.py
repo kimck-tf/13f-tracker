@@ -140,3 +140,22 @@ def test_engine_persists_quarterly_holdings(conn):
         ).fetchall()
     }
     assert tickers == {"AAPL", "MSFT"}
+
+
+def test_benchmark_nav_tracks_spy_before_first_position(conn):
+    """벤치마크 NAV는 전략이 첫 종목을 사기 전에도 SPY를 따라야 한다 — 그렇지 않으면 첫 매수
+    시점이 다른 전략끼리 bench_cagr가 달라져(15.56% vs 16.29%) 초과수익 비교가 어긋난다."""
+
+    class CashOnly(Strategy):
+        name = "CashOnly"
+        def get_target_positions(self, as_of_date, conn):
+            return {}
+        def params_json(self):
+            return "{}"
+
+    result = run_backtest(
+        strategy=CashOnly(), start=date(2024, 1, 2), end=date(2024, 12, 31),
+        conn=conn, cost_bps=0,
+    )
+    # SPY +0.05%/day, 252일 → 251번 상승
+    assert result.metrics["bench_total_return"] == pytest.approx(1.0005 ** 251 - 1, rel=1e-6)
