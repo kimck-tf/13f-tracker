@@ -1,6 +1,8 @@
 """Unit tests for web/server.py — verify routes + mount order via TestClient."""
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -127,6 +129,39 @@ def test_static_assets_require_revalidation(client: TestClient) -> None:
         r = client.get(path)
         assert r.status_code == 200, path
         assert r.headers.get("cache-control") == "no-cache", path
+
+
+def test_index_html_versions_local_asset_urls(client: TestClient) -> None:
+    """로컬 스크립트·CSS 주소에 파일 수정 시각 기반 버전을 붙여, 이전에 no-cache 없이 캐시된
+    사본을 쓰는 브라우저(예: 폰)도 새로고침만으로 새 파일을 받게 한다."""
+    r = client.get("/")
+    assert r.status_code == 200
+    body = r.text
+    for asset in ("hf-app.jsx", "hf-components.jsx", "hf-plan.jsx", "hf-styles.css", "hf-data.js"):
+        assert re.search(rf'"{asset}\?v=[0-9a-f]+"', body), f"{asset} lacks ?v=: {body[:400]}"
+    # CDN·외부 주소는 그대로 둔다 (integrity 해시가 깨지지 않게)
+    assert 'unpkg.com/react@18.3.1/umd/react.development.js"' in body
+    assert "cdn.jsdelivr.net" in body and "jsdelivr.net/gh/orioncactus/pretendard@v1.3.9" in body
+
+
+def test_index_html_version_changes_when_an_asset_changes(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """파일이 바뀌면 버전도 바뀌어야 캐시가 무시된다."""
+    from thirteen_f.web import server
+
+    before = re.search(r'hf-app\.jsx\?v=([0-9a-f]+)', client.get("/").text).group(1)
+    stamp = tmp_path / "hf-app.jsx"
+    stamp.write_text("// changed", encoding="utf-8")
+    monkeypatch.setattr(server, "asset_version", lambda: "deadbeef")
+    after = re.search(r'hf-app\.jsx\?v=([0-9a-f]+)', client.get("/").text).group(1)
+    assert after == "deadbeef" and after != before
+
+
+def test_index_html_is_revalidated_not_cached(client: TestClient) -> None:
+    r = client.get("/")
+    assert r.headers.get("cache-control") == "no-cache"
+    assert "text/html" in r.headers["content-type"]
 
 
 def test_data_mount_also_requires_revalidation() -> None:

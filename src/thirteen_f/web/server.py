@@ -12,6 +12,7 @@ so every ``@app.<verb>("/api/...")`` route MUST be defined *before* the mount.
 """
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
@@ -19,7 +20,7 @@ from time import time
 
 import duckdb
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.types import Scope
@@ -75,6 +76,32 @@ class AskResponse(BaseModel):
 
 
 app = FastAPI(title="13F Terminal", default_response_class=JSONResponse)
+
+# index.html의 로컬 asset 주소(hf-*.jsx, hf-styles.css)에 붙일 버전 — `href="x.css"` / `src="x.jsx"`
+_LOCAL_ASSET_RE = re.compile(r'(?P<attr>href|src)="(?P<path>[^":/][^":]*\.(?:jsx?|css))"')
+
+
+def asset_version() -> str:
+    """static/ 안 파일들의 최신 수정 시각 → 8자리 hex.
+
+    브라우저가 ``Cache-Control: no-cache`` 이전에 받아 둔 사본을 자체 판단으로 계속 쓰는 일을
+    막는다(주소가 달라지면 캐시가 무시된다). 파일이 바뀌면 버전이 바뀌고, index.html 자체는
+    no-cache라 매번 재검증되므로 새 주소가 바로 전달된다.
+    """
+    mtime = max((p.stat().st_mtime for p in STATIC_DIR.glob("*.*")), default=0.0)
+    return f"{int(mtime):08x}"
+
+
+@app.get("/", response_class=HTMLResponse)
+@app.get("/index.html", response_class=HTMLResponse)
+def index() -> HTMLResponse:
+    """SPA 진입점. 로컬 asset 주소에 ``?v=<version>``을 붙여 내보낸다 (CDN 주소는 그대로)."""
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    version = asset_version()
+    body = _LOCAL_ASSET_RE.sub(
+        lambda m: f'{m.group("attr")}="{m.group("path")}?v={version}"', html
+    )
+    return HTMLResponse(body, headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/health")
