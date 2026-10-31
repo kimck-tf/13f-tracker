@@ -27,9 +27,10 @@
 
 ## 백테스트
 
+- **2026-10-31 전에 만든 backtest run의 수익률이 높음** — 그 전 엔진은 판 종목의 마지막 가격을 계속 들고 있다가, 다시 산 날 보유하지 않은 기간의 상승분을 하루 수익으로 붙였다 (예: ConsensusTopK가 2026-02-17 GOOG를 다시 사며 하루에 NAV +8.4%). 같은 DB를 고친 엔진으로 돌리면 2024-01-02~2026-09-14 ConsensusTopK(3,10) CAGR 36.2% → 23.1%, NewBuyOnly(2,15) 39.6% → 20.6%, Buffett 복제는 그대로(SPY 20.7%). 회전이 많은 전략일수록 부풀었으므로 README Backtest Snapshot, `docs/backtest-optimization-2026-09.md`의 순위와 그 스윕이 고른 기본 파라미터도 이 버그가 들어간 결과다. `backtest --all`과 `scripts/sweep_backtests.py`를 다시 돌린다.
 - **`backtest --all` 결과가 `CAGR=nan%`** — `prices`에 NaN 가격 행이 있다. yfinance가 아직 확정되지 않은 마지막 거래일을 NaN으로 주는 경우가 있고(2026-09 수집 때 413종목의 2026-09-14 행), 엔진은 `None`만 걸러서 NaN이 NAV 전체로 번진다. `_upsert_prices`가 NaN 종가 행을 저장하지 않도록 고쳤으므로, 그 전에 수집한 DB라면 `SELECT COUNT(*) FROM prices WHERE isnan(close) OR isnan(adj_close)`로 확인하고 해당 행을 지운 뒤 그 종목들의 최근 가격을 다시 받는다. NaN으로 계산된 backtest run은 `backtest_holdings`·`backtest_curves`·`backtest_metrics`·`backtest_runs` 순으로 지운다.
 - **시작일을 더 이르게 줘도 2024-01-02부터 계산됨** — 엔진은 SPY 가격이 있는 영업일만 순회한다. 현재 SPY 가격이 2024-01-02~2026-09-14라 `--start` 기본값 `2013-01-01`도 잘린다. 첫 13F(2024Q1)가 2024-05-13에 공개돼 그 전까지는 모든 전략이 현금이고, 약 32개월 표본이라 장기 검증은 데이터가 쌓인 뒤 다시 해야 한다.
-- **`NewBuyOnly` CAGR이 높은데 MDD도 30%를 넘음** — 2명 이상 신규매수 후보가 분기당 1~8종목뿐이라 NVDA 100%(2025-07), AER 100%(2026-04)처럼 한두 종목에 몰린 분기의 결과다. `min_positions`(후보가 그보다 적으면 현금)를 붙여도 MDD는 그대로고 현금 비중만 늘어난다 (`docs/backtest-optimization-2026-09.md`). 첫 분기(2024Q1)는 직전 분기가 없어 보유 전부가 "신규매수"로 잡히는 점도 있다. 비용은 편도 10bp 단순 가정(slippage·세금 미반영)이므로 어느 전략이든 실거래 재현성으로 해석하지 않는다.
+- **`NewBuyOnly` MDD가 30%를 넘음** — 2명 이상 신규매수 후보가 분기당 1~8종목뿐이라 NVDA 100%(2025-07), AER 100%(2026-04)처럼 한두 종목에 몰린 분기의 결과다. `min_positions`(후보가 그보다 적으면 현금)를 붙여도 MDD는 그대로고 현금 비중만 늘어난다 (`docs/backtest-optimization-2026-09.md`). 첫 분기(2024Q1)는 직전 분기가 없어 보유 전부가 "신규매수"로 잡히는 점도 있다. 비용은 편도 10bp 단순 가정(slippage·세금 미반영)이므로 어느 전략이든 실거래 재현성으로 해석하지 않는다.
 - **`backtest_holdings`가 비어 있는 run** — Phase 5 이전에 실행된 run이다. `uv run thirteen-f backtest --all`을 다시 실행한다.
 - **같은 전략 run이 여러 개 쌓임** — run마다 새 uuid `run_id`로 누적되고 삭제 로직이 없다 (2026-09-15 기준 전략별 1~4건). `backtest.json`에 모든 run이 들어가고 Backtest 화면은 type별 최신 run을 쓴다.
 - **`--strategy Ensemble` → `Unknown strategy`** — 단일 실행 registry에 없다. `--all`로 실행한다.

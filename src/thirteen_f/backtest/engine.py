@@ -154,6 +154,9 @@ def run_backtest(
         for t, p in prices_today.items():
             if t != benchmark and p is not None:
                 last_prices[t] = p
+        # 보유하지 않게 된 종목의 가격은 버린다 — 남겨 두면 다시 살 때 보유하지 않은 기간의
+        # 수익이 그날 한꺼번에 붙는다 (다시 산 첫날은 처음 사는 종목처럼 수익 0)
+        last_prices = {t: p for t, p in last_prices.items() if t in current_weights}
         last_bench_price = prices_today.get(benchmark, last_bench_price)
 
         nav_series.append((d, portfolio_value, bench_value, len(current_weights)))
