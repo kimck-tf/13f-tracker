@@ -77,3 +77,12 @@ def test_update_skip_collect_runs_no_collect(db, calls):
     )
     assert r.exit_code == 0, r.output
     assert _steps(calls) == [["analyze"]]
+
+
+def test_update_backs_up_db_before_first_step(db, calls):
+    r = CliRunner().invoke(
+        app, ["update", "--skip-collect", "--skip-backtest", "--skip-export", "--skip-report"]
+    )
+    assert r.exit_code == 0, r.output
+    backups = list((db.parent / "backups").iterdir())
+    assert len(backups) == 1 and "backup:" in r.output

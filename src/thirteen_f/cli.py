@@ -270,11 +270,16 @@ def update(
             typer.echo(f"step failed: {args[0]} (exit={result.returncode})", err=True)
             raise typer.Exit(result.returncode)
 
-    if not skip_collect:
-        from thirteen_f.core.config import load_settings
-        from thirteen_f.core.db_tools import db_start_quarter
+    from thirteen_f.core.config import load_settings
+    from thirteen_f.core.db_tools import backup_db, db_start_quarter
 
-        label = start or db_start_quarter(load_settings().duckdb_path)
+    settings = load_settings()
+    backup = backup_db(settings.duckdb_path)
+    if backup:
+        typer.echo(f"backup: {backup}")
+
+    if not skip_collect:
+        label = start or db_start_quarter(settings.duckdb_path)
         collect_args = ["collect"]
         if label:
             collect_args += ["--start", label]

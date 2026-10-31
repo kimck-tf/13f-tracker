@@ -84,5 +84,5 @@ DuckDB ─ export ─▶ web/data/*.json ─ serve(FastAPI) ─▶ SPA(web/stati
 - **TDD**: 실패하는 테스트 → 최소 구현 → `uv run pytest tests/unit` 전체 통과 → 커밋 (plan의 step 단위).
 - **stage는 파일을 지정해서** (`git add <path>`): 루트에 커밋 대상이 아닌 미추적 파일(`handoff/`, `data/logs/`, `reports/output/`, `.omc/` 등)이 있어 `git add .`나 `-A`는 이것들을 함께 끌어들인다.
 - **정적 검사**: 수정한 파일의 ruff·mypy 위반 수가 수정 전보다 늘지 않게 한다. 기존 위반 일괄 정리는 요청받았을 때만 한다 — 무관한 diff가 섞인다.
-- **`data/13f.duckdb`는 git 밖의 유일본**이다 (재수집에 수십 분 이상 + API 한도). 파일 삭제, 테이블 DROP·DELETE, 재생성 전에는 사용자에게 확인하고 복사본을 만든다. `scripts/init_db.py` 재실행은 idempotent라 여기에 해당하지 않는다.
+- **`data/13f.duckdb`는 git 밖의 유일본**이다 (재수집에 수십 분 이상 + API 한도). 파일 삭제, 테이블 DROP·DELETE, 재생성 전에는 사용자에게 확인하고 복사본을 만든다. `scripts/init_db.py` 재실행은 idempotent라 여기에 해당하지 않는다. `update`는 시작할 때 `data/backups/`(Google Drive 동기화 폴더)에 최근 3개를 남긴다.
 - **frontend는 `src/thirteen_f/web/static/`에서만 수정**한다. `handoff/design/`은 구현 전 디자인 원본이며, `handoff/`의 구조 권고(Next.js, "hf-data.js가 알고리즘 정답")는 실제 구현과 다르다.
