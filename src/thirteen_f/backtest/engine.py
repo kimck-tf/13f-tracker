@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Iterable
-from datetime import date
+from datetime import date, timedelta
 
 import duckdb
 
@@ -20,6 +20,10 @@ from thirteen_f.backtest.metrics import (
 from thirteen_f.backtest.strategy import BacktestResult, Strategy
 
 logger = logging.getLogger(__name__)
+
+# 마지막 가격이 이 기간(달력일)보다 오래된 종목은 상장폐지·인수로 보고 매매하지 않는다.
+# Plan 탭의 STALE 표시(web/exporter.py)도 같은 기준을 쓴다.
+STALE_DAYS = 10
 
 
 def _fetch_business_days(
@@ -49,6 +53,30 @@ def _fetch_prices_for_day(
         [d, *tickers],
     ).fetchall()
     return {r[0]: r[1] for r in rows if r[1] is not None}
+
+
+def _drop_stale(
+    conn: duckdb.DuckDBPyConnection, target: dict[str, float], d: date
+) -> dict[str, float]:
+    """d까지의 마지막 가격이 STALE_DAYS보다 오래됐거나 가격이 없는 종목을 빼고, 남은 종목에
+    원래 비중 합(보통 1)을 다시 나눈다. 모두 빠지면 빈 dict(현금)."""
+    if not target:
+        return target
+    placeholders = ",".join("?" for _ in target)
+    rows = conn.execute(
+        f"SELECT ticker, MAX(date) FROM prices WHERE ticker IN ({placeholders}) AND date <= ? "
+        "GROUP BY ticker",
+        [*target, d],
+    ).fetchall()
+    cutoff = d - timedelta(days=STALE_DAYS)
+    kept = {t: target[t] for t, last in rows if last >= cutoff}
+    if len(kept) == len(target):
+        return target
+    total = sum(kept.values())
+    if total <= 0:
+        return {}
+    scale = sum(target.values()) / total
+    return {t: w * scale for t, w in kept.items()}
 
 
 def run_backtest(
@@ -83,7 +111,7 @@ def run_backtest(
     from thirteen_f.core.dates import quarter_label
 
     for i, d in enumerate(business_days):
-        target = strategy.get_target_positions(as_of_date=d, conn=conn)
+        target = _drop_stale(conn, strategy.get_target_positions(as_of_date=d, conn=conn), d)
         prices_today = _fetch_prices_for_day(
             conn, list(target.keys()) + list(current_weights.keys()) + [benchmark], d
         )

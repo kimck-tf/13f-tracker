@@ -12,6 +12,7 @@ from pathlib import Path
 
 import duckdb
 
+from thirteen_f.backtest.engine import STALE_DAYS
 from thirteen_f.backtest.runner import default_suite
 from thirteen_f.backtest.strategy import latest_public_period
 from thirteen_f.core.dates import parse_quarter, quarter_end, quarter_label, sec_13f_deadline
@@ -416,6 +417,20 @@ def _latest_run_metrics(conn: duckdb.DuckDBPyConnection) -> dict[str, dict]:
     }
 
 
+def _stale_tickers(conn: duckdb.DuckDBPyConnection) -> set[str]:
+    """마지막 가격이 시장의 마지막 날(``MAX(prices.date)``)보다 ``STALE_DAYS`` 넘게 이른 종목.
+
+    기준을 오늘이 아니라 시장의 마지막 날로 두어, 가격 수집이 오래됐을 때 전 종목이 stale로
+    잡히지 않게 한다. 가격이 아예 없는 종목은 여기 없다 — ``describe``가 따로 본다.
+    """
+    rows = conn.execute(
+        "SELECT ticker FROM prices GROUP BY ticker "
+        "HAVING MAX(date) < (SELECT MAX(date) FROM prices) - CAST(? AS INTEGER)",
+        (STALE_DAYS,),
+    ).fetchall()
+    return {r[0] for r in rows}
+
+
 def export_targets(
     conn: duckdb.DuckDBPyConnection, out_dir: Path, as_of: date | None = None
 ) -> None:
@@ -445,6 +460,7 @@ def export_targets(
             ids = [label_by_cik[c].lower() for c in (ciks or "").split(",") if c in label_by_cik]
             holders_by_ticker[ticker] = (int(count), ids)
     metrics_by_name = _latest_run_metrics(conn)
+    stale = _stale_tickers(conn)
 
     def describe(ticker: str) -> dict:
         row = conn.execute(
@@ -464,6 +480,7 @@ def export_targets(
             "holderIds": ids,
             "lastClose": float(px[0]) if px and px[0] is not None else None,
             "lastCloseDate": px[1].isoformat() if px else None,
+            "priceStale": px is None or ticker in stale,
         }
 
     strategies = []
@@ -510,6 +527,7 @@ def export_targets(
             f"평균 보유 {RECOMMEND_MIN_POSITIONS}종목 이상"
         ),
         "recommended": recommended,
+        "staleDays": STALE_DAYS,
         "strategies": strategies,
     }
     (out_dir / "targets.json").write_text(

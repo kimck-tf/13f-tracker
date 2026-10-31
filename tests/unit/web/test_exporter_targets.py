@@ -154,3 +154,21 @@ def test_next_rebalance_rolls_weekend_deadline_to_monday():
     assert _next_rebalance(date(2024, 6, 30)) == date(2024, 11, 14)
     # 2025-12-31 + 45일 = 2026-02-14(토) → 02-16(월)은 Presidents' Day → 02-17(화)
     assert _next_rebalance(date(2025, 9, 30)) == date(2026, 2, 17)
+
+
+def test_export_targets_flags_stale_prices_relative_to_market_last_date(conn, tmp_path: Path):
+    """기준은 '오늘'이 아니라 prices의 마지막 날(08-30) — CCC는 07-01이 마지막이라 stale,
+    AAA·BBB는 아니다. 가격이 아예 없는 종목(SPY)도 stale."""
+    conn.execute(
+        "INSERT INTO prices (ticker, date, close, adj_close) "
+        "VALUES ('CCC', DATE '2024-07-01', 10.0, 10.0)"
+    )
+    export_targets(conn, tmp_path, as_of=date(2024, 10, 15))
+    data = _load(tmp_path)
+    assert data["staleDays"] == 10
+    cons = _by_name(data, "ConsensusTopK(3,10)")
+    stale = {p["ticker"]: p["priceStale"] for p in cons["positions"]}
+    assert stale == {"AAA": False, "BBB": False}
+    assert cons["sells"][0]["ticker"] == "CCC" and cons["sells"][0]["priceStale"] is True
+    clone = _by_name(data, "SingleManagerClone(Buffett)")
+    assert next(p for p in clone["positions"] if p["ticker"] == "SPY")["priceStale"] is True
