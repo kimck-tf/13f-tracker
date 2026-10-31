@@ -150,9 +150,10 @@ def run_backtest(
             if last_bench_price and p_b_t:
                 bench_value *= p_b_t / last_bench_price
 
-        # last_prices 업데이트: 오늘 가격 있는 종목만 갱신, 없는 종목은 직전 값 유지
+        # last_prices 업데이트: 오늘 가격 있는 종목만 갱신, 없는 종목은 직전 값 유지.
+        # 벤치마크(SPY)도 넣는다 — 복제 전략이 SPY를 보유하면 그 수익을 받아야 한다
         for t, p in prices_today.items():
-            if t != benchmark and p is not None:
+            if p is not None:
                 last_prices[t] = p
         # 보유하지 않게 된 종목의 가격은 버린다 — 남겨 두면 다시 살 때 보유하지 않은 기간의
         # 수익이 그날 한꺼번에 붙는다 (다시 산 첫날은 처음 사는 종목처럼 수익 0)

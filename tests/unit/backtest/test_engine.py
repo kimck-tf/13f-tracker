@@ -226,3 +226,22 @@ def test_engine_rebuy_does_not_earn_the_return_made_while_out(conn):
     assert navs[date(2024, 5, 1)] / navs[date(2024, 4, 30)] == pytest.approx(1.0, abs=1.5e-3)
     # 다시 산 뒤에는 AAPL을 그대로 따라간다
     assert navs[date(2024, 6, 30)] / navs[date(2024, 5, 1)] == pytest.approx(1.001**60)
+
+
+def test_engine_earns_the_benchmark_ticker_when_held(conn):
+    """복제 전략은 ETF를 그대로 담는다 — SPY를 100% 보유하면 수익이 벤치마크와 같아야 한다
+    (0%가 아니라)."""
+
+    class HoldSpy(Strategy):
+        name = "HoldSpy"
+
+        def get_target_positions(self, as_of_date, conn):
+            return {"SPY": 1.0}
+
+        def params_json(self):
+            return "{}"
+
+    result = run_backtest(HoldSpy(), date(2024, 1, 2), date(2024, 3, 31), conn, cost_bps=0)
+    first, last = result.nav_series[0], result.nav_series[-1]
+    assert last[1] / first[1] == pytest.approx(last[2] / first[2])
+    assert last[1] / first[1] > 1.04  # SPY 하루 +0.05% × 89일
