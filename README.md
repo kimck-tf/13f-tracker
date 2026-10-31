@@ -161,6 +161,7 @@ print(c.execute('''
 | Command | Phase | Status |
 |---|---|---|
 | `thirteen-f collect [--start QUARTER]` | 1 | done |
+| `thirteen-f check-filings` | 1 | done (DB에 없는 13F-HR 원본 목록 — 있으면 exit 1, 없으면 0, 확인 실패 2. `scripts/check_and_update.ps1`이 매일 확인해 갱신) |
 | `thirteen-f analyze [--threshold FLOAT]` | 2 | done |
 | `thirteen-f backtest [--strategy NAME / --all] [--start --end --cost-bps]` | 3 | done (기본 8개: 7종 전략 + Druckenmiller 복제) |
 | `thirteen-f targets --strategy NAME [--as-of DATE]` | 3 | done (전략이 지금 지시하는 목표 비중 — 분기마다 매매 목록 확인) |

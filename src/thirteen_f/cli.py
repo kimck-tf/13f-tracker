@@ -33,6 +33,46 @@ def collect(
 
 
 @app.command()
+def check_filings() -> None:
+    """DB에 없는 13F-HR 원본이 EDGAR에 있는지 확인한다 (collect 전 점검, 자동 갱신의 신호).
+
+    있으면 한 줄씩 출력하고 exit 1, 없으면 exit 0. 확인 자체가 실패하면(네트워크·설정) exit 2 —
+    Python의 미처리 예외도 exit 1이라 `scripts/check_and_update.ps1`이 갱신 신호로 오인하지 않게.
+    """
+    from pathlib import Path
+
+    import duckdb
+    import yaml  # type: ignore[import-untyped]  # PyYAML 스텁 없음 (기존 모듈과 같은 기준선 오류)
+
+    from thirteen_f.collect.edgar_client import EdgarClient
+    from thirteen_f.collect.watch import find_new_filings
+    from thirteen_f.core.config import load_settings
+
+    try:
+        settings = load_settings()
+        managers = yaml.safe_load(Path("config/managers.yaml").read_text(encoding="utf-8"))
+        conn = duckdb.connect(str(settings.duckdb_path), read_only=True)
+        try:
+            with EdgarClient(user_agent=settings.sec_user_agent) as client:
+                new = find_new_filings(conn, client, managers)
+        finally:
+            conn.close()
+    except Exception as exc:
+        typer.echo(f"check-filings 실패: {type(exc).__name__}: {exc}", err=True)
+        raise typer.Exit(2) from exc
+
+    if not new:
+        typer.echo("새 13F-HR 없음")
+        return
+    typer.echo(f"새 13F-HR {len(new)}건")
+    for n in new:
+        typer.echo(
+            f"  {n['label']:14s} {n['period_of_report']}  {n['filed_at']}  {n['accession_no']}"
+        )
+    raise typer.Exit(1)
+
+
+@app.command()
 def analyze(
     threshold: float = typer.Option(0.05, help="hold/increase/decrease 분류 threshold"),
 ) -> None:

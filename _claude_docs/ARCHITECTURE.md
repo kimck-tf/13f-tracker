@@ -7,6 +7,7 @@ CLAUDE.md `## Architecture`를 보충한다. 파일 목록은 `git ls-files`로 
 | 명령 | 진입점 | 읽기 | 쓰기 | 다시 실행하면 |
 |---|---|---|---|---|
 | `collect` | `collect/pipeline.py:run_collect` | `config/managers.yaml`, EDGAR, OpenFIGI, yfinance(+Stooq) | `managers`, `filings`, `holdings`, `cusip_ticker_map`, `prices`, `data/logs/failed_tickers.jsonl` | upsert로 갱신 (중복 행 없음) |
+| `check-filings` | `cli.py:check_filings` → `collect/watch.py:find_new_filings` | `config/managers.yaml`, EDGAR submissions, `filings` (read-only 연결) | — (출력과 exit code: 새 13F-HR 1, 없음 0, 확인 실패 2) | 쓰기 없음 |
 | `analyze` | `analyze/pipeline.py:run_analyze` | `filings`, `holdings`, `managers`, `cusip_ticker_map`, `config/scoring.toml` | `signals_quarterly`, `consensus_quarterly`, `total_scores` | 세 테이블을 DELETE 후 전체 재계산 |
 | `backtest` | `backtest/runner.py:run_suite`(`--all`), `backtest/engine.py:run_backtest` | 분석 테이블, `filings`, `holdings`, `prices` | `backtest_runs`, `backtest_curves`, `backtest_metrics`, `backtest_holdings` | 새 `run_id`(uuid)로 누적, 이전 run은 남음 |
 | `export` | `web/cli.py:do_export` → `web/exporter.py` | 전체 (read-only 연결) | `src/thirteen_f/web/data/` | 파일 덮어쓰기 |

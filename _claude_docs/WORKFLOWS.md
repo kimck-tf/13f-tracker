@@ -4,6 +4,7 @@
 
 ## 새 분기 13F 반영
 
+0. `uv run thirteen-f check-filings` — DB에 없는 13F-HR 원본이 EDGAR에 있으면 매니저·분기·제출일·accession을 한 줄씩 보여 주고 exit 1, 없으면 `새 13F-HR 없음`과 exit 0, 확인이 실패하면(네트워크·`.env`·DB 잠금) exit 2. collect가 적재하지 않는 것은 세지 않는다 — 정정본(13F-HR/A, 원본과 함께 collect가 처리), DB 최소 분기보다 이른 분기, 대표 CIK도 보고한 분기의 `extra_ciks` 제출분. 매일 자동으로 확인·갱신하려면 아래 "새 공시 자동 확인·갱신".
 1. `uv run thirteen-f update --skip-backtest --skip-export --skip-report` — `update`는 시작할 때 `data/backups/`(Google Drive 동기화 폴더)에 DB 사본을 만들어 최근 3개를 남기고, collect는 DB의 최소 분기부터 수집한다 (`--start`로 바꿀 수 있다). 가격 단계는 종목별 마지막 저장일 10일 전부터만 받고, 배당·분할로 수정 종가가 소급 조정되면 그 종목의 저장 이력 전체를 같은 비율로 재스케일한다 (전체 기간을 다시 받는 것은 겹치는 구간이 한 비율로 설명되지 않는 종목뿐 — 데이터 정정이나 저장 이력 안의 단절). `--start`를 DB의 가장 이른 가격보다 앞당기면 그 실행은 전 종목을 새 시작일부터 받는다. 요청은 시작일이 같은 종목을 50개씩 묶어 보내므로 약 1,650종목에 5분 안팎 걸린다 (2026-10-31 100종목 실측 17.4초, 배치 2번. 배치에서 빠진 종목만 종목당 1번씩 다시 받는다. 전체 기간을 받던 2026-09에는 EDGAR 1분, OpenFIGI 5분, 가격 약 2시간). 실행 중에는 DB가 잠겨 다른 프로세스가 읽을 수 없다.
 2. SEC에 13F-HR을 낸 매니저 수와 `filings`의 새 분기 행 수가 같은지, 가격 실패 로그(`Both sources failed`)에 새 종목이 있는지 확인한다. 보유 중인데 가격이 끊긴 종목은 TROUBLESHOOTING.md의 "가격이 어느 날짜에서 끊김" 항목대로 처리한다.
 3. 새 ticker가 생겼으면 `uv run python scripts/supplement_sector.py`.
@@ -116,3 +117,22 @@ Start-ScheduledTask -TaskName "13f-serve"
 3. 해제: `Unregister-ScheduledTask -TaskName 13f-serve -Confirm:$false`.
 
 완료: 다시 로그온한 뒤 `/api/health`가 200을 돌려주고, 브라우저 `http://127.0.0.1:8765/#/plan`에 데이터가 보인다.
+
+## 새 공시 자동 확인·갱신
+
+`scripts/check_and_update.ps1`은 `check-filings`가 exit 1(새 13F-HR)일 때만 `update --skip-report` → `scripts/supplement_sector.py` → `export`를 차례로 돌린다. exit 0이면 그대로 끝나고, 확인이 실패하면(exit 2) 갱신하지 않는다. 각 단계는 Smart App Control을 피해 `scripts\py.ps1`로 실행하고, 출력은 `data/logs/check_and_update.log`에 시각과 함께 덧붙인다. 제출 기간(분기말 뒤 45일)에는 매니저가 낼 때마다 그날 갱신되므로 기한 전에는 일부 매니저만 들어간 분기가 화면에 보인다 — 전략은 `latest_public_period` 규칙대로 전원이 제출한 뒤에야 그 분기를 쓴다.
+
+1. 저장소 루트의 PowerShell에서 등록한다. 매일 08:00(한국 시간 아침은 미국 장 마감 뒤라 그날 종가가 확정돼 있다)이고, 그 시각에 PC가 꺼져 있었으면 켜진 뒤 실행한다.
+
+```powershell
+$root = (Get-Location).Path
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -WorkingDirectory $root `
+  -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$root\scripts\check_and_update.ps1`""
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable
+Register-ScheduledTask -TaskName "13f-check-filings" -Action $action -Trigger (New-ScheduledTaskTrigger -Daily -At 8am) -Settings $settings
+```
+
+2. 한 번 바로 돌려 본다: `Start-ScheduledTask -TaskName 13f-check-filings` → `Get-Content data\logs\check_and_update.log -Tail 20 -Encoding UTF8`. `(Get-ScheduledTaskInfo -TaskName 13f-check-filings).LastTaskResult`가 0이면 새 공시가 없었거나 갱신까지 마친 것이고, 그 밖의 값은 실패한 단계의 exit code다.
+3. 해제: `Unregister-ScheduledTask -TaskName 13f-check-filings -Confirm:$false`.
+
+완료: 로그에 그날 날짜의 `> -m thirteen_f.cli check-filings` 줄과 `새 13F-HR 없음`(또는 갱신 단계와 `갱신 완료`)이 있다.
