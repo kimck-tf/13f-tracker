@@ -58,3 +58,30 @@ def test_ensemble_combines_weights():
 def test_ensemble_rejects_unnormalized_weights():
     with pytest.raises(ValueError, match="sum"):
         Ensemble(weights={ScoreTopK(20): 0.5, ScoreTopK(10): 0.3})  # sum=0.8
+
+
+def test_conviction_follow_excludes_etfs_and_merges_classes(empty_conn):
+    c = empty_conn
+    c.execute("INSERT INTO managers (cik, name) VALUES ('c1', 'M')")
+    c.execute(
+        "INSERT INTO filings VALUES "
+        "('a1', 'c1', '13F-HR', DATE '2024-03-31', DATE '2024-05-15', FALSE, NULL)"
+    )
+    c.executemany(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, is_etf) VALUES (?, ?, ?)",
+        [
+            ("78462F103", "SPY", True),
+            ("530307107", "LBRDA", False),
+            ("530307305", "LBRDK", False),
+            ("037833100", "AAPL", False),
+        ],
+    )
+    c.executemany(
+        "INSERT INTO signals_quarterly "
+        "(cik, cusip, period_of_report, change_type, weight_pct, conviction_score) "
+        "VALUES ('c1', ?, DATE '2024-03-31', 'hold', 0.1, ?)",
+        [("78462F103", 1.0), ("530307107", 0.9), ("530307305", 0.8), ("037833100", 0.7)],
+    )
+    t = ConvictionFollow(top_k=2).get_target_positions(date(2024, 6, 1), c)
+    assert set(t) == {"LBRDA", "AAPL"}  # SPY 제외, 발행사당 1개, 그다음 상위 2개
+    assert t["LBRDA"] == pytest.approx(0.9 / 1.6)

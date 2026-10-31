@@ -76,6 +76,7 @@ DuckDB ─ export ─▶ web/data/*.json ─ serve(FastAPI) ─▶ SPA(web/stati
 - **holdings PK** `(accession_no, cusip, title_of_class, put_call)`: 뒤 두 컬럼은 `NOT NULL DEFAULT ''` — NULL이 들어가면 PK 중복 검사가 동작하지 않는다. 같은 PK로 분할 보고된 행은 적재 전에 합산한다 (`upsert_holdings`).
 - **점수 가중치** (Spec §6.1): `config/scoring.toml [weights]` 합이 1.0(±0.01)이 아니면 `load_weights`가 예외를 낸다. 기본값 consensus 0.30, conviction 0.30, continuity 0.20, cloning_quality 0.20.
 - **CUSIP → ticker** (Spec §5.1 1e): 첫 글자가 알파벳인 CINS 코드(외국 소재 미국 상장사, 예: Chubb)는 `ID_CUSIP`이 아니라 `ID_CINS`로 조회해야 찾는다. OpenFIGI 결과 중 US primary 거래소 코드(`cusip_mapper.US_PRIMARY_EXCH_CODES`)만 채택하고 `/`·`.`은 `-`로 바꾼다 (yfinance 표기). 매핑 실패는 `ticker = NULL`로 두고 전략에서 제외한다.
+- **집계 전략의 종목 단위**: ConsensusTopK·ScoreTopK·NewBuyOnly·ConvictionFollow·MultiManager는 `is_etf` 종목을 빼고 발행사(CUSIP 앞 6자리)당 한 클래스만 쓴다. 두 규칙은 순위·`LIMIT` 전에 적용한다 (`tests/unit/backtest/test_score_top_k.py`·`test_other_strategies.py`·`test_multi_manager.py`). 복제(SingleManagerClone)는 거장 보유 그대로.
 - **스키마 SSOT**: `scripts/init_db.py`. Spec §4.2의 DDL은 이와 같게 유지한다 (변경 절차는 `_claude_docs/WORKFLOWS.md`).
 
 ## Workflow Rules

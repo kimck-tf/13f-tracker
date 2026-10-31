@@ -163,3 +163,68 @@ def test_multi_manager_skips_13f_nt(conn):
     targets = s.get_target_positions(date(2024, 9, 1), conn)
     # 13F-NT 무시 → a1의 AAPL+BA 잡힘
     assert set(targets.keys()) == {"AAPL", "BA"}
+
+
+def test_multi_manager_excludes_etfs_and_sums_share_classes(conn):
+    conn.executemany(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, is_etf) VALUES (?, ?, ?)",
+        [("78462F103", "SPY", True), ("530307107", "LBRDA", False), ("530307305", "LBRDK", False)],
+    )
+    # upsert_holdings는 accession의 기존 행을 지우고 다시 넣는다
+    # → fixture의 AAA·BBB를 포함한 전체 목록을 준다
+    upsert_holdings(
+        conn,
+        "a1",
+        [
+            {
+                "cusip": "AAA",
+                "name_of_issuer": "Apple",
+                "title_of_class": "COM",
+                "value_usd": 1000,
+                "shares": 10,
+                "share_type": "SH",
+                "put_call": "",
+            },
+            {
+                "cusip": "BBB",
+                "name_of_issuer": "Boeing",
+                "title_of_class": "COM",
+                "value_usd": 500,
+                "shares": 5,
+                "share_type": "SH",
+                "put_call": "",
+            },
+            {
+                "cusip": "78462F103",
+                "name_of_issuer": "SPDR",
+                "title_of_class": "ETF",
+                "value_usd": 5000,
+                "shares": 10,
+                "share_type": "SH",
+                "put_call": "",
+            },
+            {
+                "cusip": "530307107",
+                "name_of_issuer": "Liberty",
+                "title_of_class": "A",
+                "value_usd": 700,
+                "shares": 7,
+                "share_type": "SH",
+                "put_call": "",
+            },
+            {
+                "cusip": "530307305",
+                "name_of_issuer": "Liberty",
+                "title_of_class": "K",
+                "value_usd": 600,
+                "shares": 6,
+                "share_type": "SH",
+                "put_call": "",
+            },
+        ],
+    )
+    s = MultiManager(mgr_labels=["M1", "M2"], top_k=2, weighting="byvalue")
+    t = s.get_target_positions(date(2024, 6, 1), conn)
+    # AAPL 1800, Liberty 700+600=1300(대표 LBRDA), KO 1200 → top 2 = AAPL, LBRDA. SPY 5000은 제외
+    assert set(t) == {"AAPL", "LBRDA"}
+    assert t["LBRDA"] == pytest.approx(1300 / 3100)

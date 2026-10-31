@@ -34,14 +34,31 @@ class NewBuyOnly(Strategy):
             return {}
         rows = conn.execute(
             """
-            SELECT c.ticker
-            FROM consensus_quarterly c
-            JOIN total_scores t
-              ON t.period_of_report = c.period_of_report AND t.cusip = c.cusip
-            WHERE c.period_of_report = ?
-              AND c.new_buy_count >= ?
-              AND c.ticker IS NOT NULL
-            ORDER BY t.total_score DESC NULLS LAST
+            WITH cand AS (
+                SELECT c.ticker, t.total_score, c.new_buy_count,
+                       SUBSTR(c.cusip, 1, 6) AS issuer
+                FROM consensus_quarterly c
+                JOIN total_scores t
+                  ON t.period_of_report = c.period_of_report AND t.cusip = c.cusip
+                LEFT JOIN cusip_ticker_map m ON m.cusip = c.cusip
+                WHERE c.period_of_report = ?
+                  AND c.ticker IS NOT NULL
+                  AND COALESCE(m.is_etf, FALSE) = FALSE
+            ),
+            one_per_issuer AS (
+                -- 발행사(CUSIP 앞 6자리)당 total_score 최고 클래스 하나.
+                -- 신규 매수 거장 수는 클래스 중 최대값으로 본다
+                SELECT ticker, total_score,
+                       MAX(new_buy_count) OVER (PARTITION BY issuer) AS issuer_new_buys
+                FROM cand
+                QUALIFY ROW_NUMBER() OVER (
+                    PARTITION BY issuer ORDER BY total_score DESC NULLS LAST, ticker
+                ) = 1
+            )
+            SELECT ticker
+            FROM one_per_issuer
+            WHERE issuer_new_buys >= ?
+            ORDER BY total_score DESC NULLS LAST
             LIMIT ?
             """,
             (latest_period, self.min_holders, self.top_k),

@@ -34,19 +34,29 @@ class ConvictionFollow(Strategy):
                 )
                 GROUP BY cik
             ),
-            ranked AS (
-                SELECT s.cik, s.cusip, s.conviction_score,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY s.cik ORDER BY s.conviction_score DESC NULLS LAST
-                       ) AS rn
+            cand AS (
+                -- ETF를 빼고, 거장마다 발행사(CUSIP 앞 6자리)당 conviction 최고 클래스 하나
+                SELECT s.cik, s.cusip, m.ticker, s.conviction_score
                 FROM signals_quarterly s
                 JOIN latest_per_cik l ON s.cik = l.cik AND s.period_of_report = l.p
+                LEFT JOIN cusip_ticker_map m ON m.cusip = s.cusip
                 WHERE s.change_type != 'exit'
+                  AND COALESCE(m.is_etf, FALSE) = FALSE
+                QUALIFY ROW_NUMBER() OVER (
+                    PARTITION BY s.cik, SUBSTR(s.cusip, 1, 6)
+                    ORDER BY s.conviction_score DESC NULLS LAST, s.cusip
+                ) = 1
+            ),
+            ranked AS (
+                SELECT cik, cusip, ticker, conviction_score,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY cik ORDER BY conviction_score DESC NULLS LAST
+                       ) AS rn
+                FROM cand
             )
-            SELECT r.cusip, m.ticker, r.conviction_score
-            FROM ranked r
-            LEFT JOIN cusip_ticker_map m ON r.cusip = m.cusip
-            WHERE r.rn <= ? AND m.ticker IS NOT NULL
+            SELECT cusip, ticker, conviction_score
+            FROM ranked
+            WHERE rn <= ? AND ticker IS NOT NULL
             """,
             (as_of_date, self.top_k),
         ).fetchall()

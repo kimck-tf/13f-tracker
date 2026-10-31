@@ -26,10 +26,24 @@ class ScoreTopK(Strategy):
             return {}
         rows = conn.execute(
             """
+            WITH cand AS (
+                SELECT t.ticker, t.total_score, SUBSTR(t.cusip, 1, 6) AS issuer
+                FROM total_scores t
+                LEFT JOIN cusip_ticker_map m ON m.cusip = t.cusip
+                WHERE t.period_of_report = ?
+                  AND t.ticker IS NOT NULL
+                  AND COALESCE(m.is_etf, FALSE) = FALSE
+            ),
+            one_per_issuer AS (
+                -- 발행사(CUSIP 앞 6자리)당 total_score 최고 클래스 하나
+                SELECT ticker, total_score
+                FROM cand
+                QUALIFY ROW_NUMBER() OVER (
+                    PARTITION BY issuer ORDER BY total_score DESC NULLS LAST, ticker
+                ) = 1
+            )
             SELECT ticker
-            FROM total_scores
-            WHERE period_of_report = ?
-              AND ticker IS NOT NULL
+            FROM one_per_issuer
             ORDER BY total_score DESC NULLS LAST
             LIMIT ?
             """,

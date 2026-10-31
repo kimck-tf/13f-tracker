@@ -136,7 +136,7 @@ print(c.execute('''
 6. **Lookahead bias 차단은 검증됨** (Spec §7.4)
    5개 전략 × 미래 filing 노출 6 케이스 단위 테스트로 확인. `filings.filed_at <= as_of_date` 가드는 모든 전략 SQL에 강제됨. 매니저 전원의 집계(총점·컨센서스)를 쓰는 전략은 그 분기 13F가 모두 제출된 뒤에만 그 분기를 쓴다 (2026-09 수정 전에는 첫 제출자 기준이라 최대 11일 앞섰다).
 
-7. **탐색에서 발견한 정의상 한계** — 컨센서스 상위 종목에 GOOG·GOOGL이 따로 들어가 Alphabet이 사실상 두 자리를 차지하고, SPY 같은 ETF도 종목으로 집계된다. 같은 회사 복수 클래스 합산·ETF 제외는 아직 없다 (`docs/backtest-optimization-2026-09.md` §5·§6).
+7. **집계 전략의 종목 단위** — 컨센서스 상위 종목에 GOOG·GOOGL이 따로 들어가 Alphabet이 두 자리를 차지하고 SPY 같은 ETF도 종목으로 집계되던 문제를, 2026-10-31에 집계 전략(ConsensusTopK·ScoreTopK·NewBuyOnly·ConvictionFollow·MultiManager)의 ETF 제외·발행사(CUSIP 앞 6자리) 합산으로 고쳤다. 복제 전략은 거장 보유 그대로다. 위 백테스트 수치는 이 변경 전 기준이다 (`docs/backtest-optimization-2026-09.md` §5·§6).
 
 ## LLM 보조 (선택)
 
