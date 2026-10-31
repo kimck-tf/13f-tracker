@@ -1,6 +1,10 @@
+from datetime import date
+
+import duckdb
 import pytest
 
-from thirteen_f.analyze.continuity import continuity_from_changes
+from scripts.init_db import init_db
+from thirteen_f.analyze.continuity import continuity_from_changes, update_continuity_scores
 
 
 def test_full_buying_sequence():
@@ -25,3 +29,40 @@ def test_short_history():
 
 def test_empty_history():
     assert continuity_from_changes([]) == 0.0
+
+
+QS = [
+    date(2023, 3, 31),
+    date(2023, 6, 30),
+    date(2023, 9, 30),
+    date(2023, 12, 31),
+    date(2024, 3, 31),
+]
+
+
+def test_sql_update_matches_reference_function(tmp_path):
+    seqs = {
+        "A": ["new", "increase", "decrease", "hold"],
+        "B": ["hold", "exit", "new"],
+        "C": ["new", "increase", "hold", "hold", "hold"],
+    }
+    db = tmp_path / "t.duckdb"
+    init_db(db)
+    c = duckdb.connect(str(db))
+    for cusip, seq in seqs.items():
+        for i, ch in enumerate(seq):
+            c.execute(
+                "INSERT INTO signals_quarterly (cik, cusip, period_of_report, change_type) "
+                "VALUES ('m', ?, ?, ?)",
+                (cusip, QS[i], ch),
+            )
+    assert update_continuity_scores(c) == 12
+    for cusip, seq in seqs.items():
+        for i in range(len(seq)):
+            got = c.execute(
+                "SELECT continuity_score FROM signals_quarterly "
+                "WHERE cusip = ? AND period_of_report = ?",
+                (cusip, QS[i]),
+            ).fetchone()[0]
+            assert got == pytest.approx(continuity_from_changes(seq[: i + 1])), (cusip, i)
+    c.close()
