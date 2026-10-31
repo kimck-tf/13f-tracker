@@ -29,7 +29,7 @@ cp .env.example .env                        # SEC_USER_AGENT 필수 (비면 load
 uv run python scripts/init_db.py            # 12 테이블 생성 + 기존 DB 마이그레이션, 재실행 안전
 
 uv run thirteen-f collect --start 2024Q1    # 기본값 2011Q1 — 기존 DB와 같은 시작 분기를 명시
-uv run thirteen-f check-filings             # DB에 없는 13F-HR 원본 → 목록 + exit 1 (없음 0, 확인 실패 2)
+uv run thirteen-f check-filings             # DB에 없는 13F-HR 원본 → 목록 + exit 3 (없음 0, 확인 실패 2)
 uv run thirteen-f analyze                   # signals·consensus·total_scores를 지우고 전체 재계산
 uv run thirteen-f backtest --all --start 2024-01-02   # 기본 8개(Buffett·Druckenmiller 복제 포함), 실행마다 run 누적
 uv run thirteen-f backtest --strategy ScoreTopK --start 2024-01-02

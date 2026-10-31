@@ -1,6 +1,7 @@
 ﻿# scripts/check_and_update.ps1 — 새 13F-HR이 있으면 update(보고서 제외) → 섹터 보충 → export.
 # 작업 스케줄러가 매일 실행한다 (등록·해제: _claude_docs/WORKFLOWS.md "새 공시 자동 확인·갱신").
-# check-filings: exit 1 = 새 공시, 0 = 없음, 그 밖 = 확인 실패(갱신하지 않음). 로그: data/logs/check_and_update.log
+# check-filings: exit 3 = 새 공시, 0 = 없음, 그 밖(1 Python 오류·2 확인 실패·-1 Python 실행 불가) = 갱신하지 않음.
+# 로그: data/logs/check_and_update.log
 # 갱신이 중간에 실패하면 data/logs/check_and_update.pending이 남아 다음 실행이 새 공시 없이도 다시 돈다.
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
@@ -23,7 +24,7 @@ function Invoke-Step([string[]]$pyArgs) {
 }
 
 $code = Invoke-Step @('-m', 'thirteen_f.cli', 'check-filings')
-if ($code -ne 0 -and $code -ne 1) { Write-Log "check-filings 실패 (exit $code) — 갱신하지 않음"; exit $code }
+if ($code -ne 0 -and $code -ne 3) { Write-Log "check-filings 실패 (exit $code) — 갱신하지 않음"; exit $code }
 if ($code -eq 0) {
     if (-not (Test-Path $pending)) { exit 0 }
     Write-Log '지난 갱신이 끝나지 않아 다시 실행'

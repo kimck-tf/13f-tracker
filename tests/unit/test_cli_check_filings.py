@@ -1,4 +1,4 @@
-"""`thirteen-f check-filings` — 새 13F-HR이 있으면 목록과 exit 1 (자동 갱신 스크립트의 신호)."""
+"""`thirteen-f check-filings` — 새 13F-HR이 있으면 목록과 exit 3 (자동 갱신 스크립트의 신호)."""
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -48,8 +48,9 @@ def _filing(acc: str, period: date, filed: date, label: str = "Buffett") -> dict
     }
 
 
-def test_check_filings_lists_new_filings_and_exits_1(monkeypatch: pytest.MonkeyPatch) -> None:
-    """기한이 지난 분기의 새 공시가 하나라도 있으면 exit 1 — 기한 전 공시는 대기로 함께 보인다."""
+def test_check_filings_lists_new_filings_and_exits_3(monkeypatch: pytest.MonkeyPatch) -> None:
+    """기한이 지난 분기의 새 공시가 하나라도 있으면 exit 3 — Python 오류가 내는 1과 겹치지 않게.
+    기한 전 공시는 대기로 함께 보인다."""
     soon = date.today() - timedelta(days=3)  # 이 분기의 기한은 아직 오지 않았다
     new = [
         _filing("0001067983-24-000017", date(2024, 3, 31), date(2024, 5, 15)),
@@ -57,7 +58,7 @@ def test_check_filings_lists_new_filings_and_exits_1(monkeypatch: pytest.MonkeyP
     ]
     monkeypatch.setattr("thirteen_f.collect.watch.find_new_filings", lambda *a, **k: new)
     result = CliRunner().invoke(app, ["check-filings"])
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == 3, result.output
     line = next(ln for ln in result.output.splitlines() if "0001067983-24-000017" in ln)
     assert "Buffett" in line and "2024-03-31" in line and "2024-05-15" in line
     assert "대기" in result.output and "0001336528-xx-000001" in result.output
@@ -77,7 +78,7 @@ def test_check_filings_holds_filings_whose_deadline_has_not_passed(
 
 
 def test_check_filings_exits_2_when_the_check_itself_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Python의 미처리 예외도 exit 1이라, 실패를 1로 내면 자동 갱신 스크립트가 update를 돌린다."""
+    """확인 실패는 2 — 자동 갱신 스크립트는 3만 갱신 신호로 쓴다."""
 
     def boom(*a, **k):
         raise RuntimeError("SEC 503")

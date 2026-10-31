@@ -36,11 +36,12 @@ def collect(
 def check_filings() -> None:
     """DB에 없는 13F-HR 원본이 EDGAR에 있는지 확인한다 (collect 전 점검, 자동 갱신의 신호).
 
-    그 분기의 기한(``sec_13f_deadline``)이 지난 공시가 있으면 한 줄씩 출력하고 exit 1, 없으면
+    그 분기의 기한(``sec_13f_due_at``)이 지난 공시가 있으면 한 줄씩 출력하고 exit 3, 없으면
     exit 0. 기한이 아직인 분기의 공시는 "대기"로만 보여 준다 — 그 전에 collect하면
     ``latest_public_period``가 DB에 들어온 일부 제출분만으로 그 분기를 공개된 것으로 보고 Plan 탭의
-    목표 비중을 바꾼다. 확인 자체가 실패하면(네트워크·설정) exit 2 — Python의 미처리 예외도
-    exit 1이라 ``scripts/check_and_update.ps1``이 갱신 신호로 오인하지 않게.
+    목표 비중을 바꾼다. 확인 자체가 실패하면(네트워크·설정) exit 2. 갱신 신호를 1이 아닌 3으로
+    두는 것은 Python의 미처리 예외·import 실패도 1로 끝나기 때문이다 —
+    ``scripts/check_and_update.ps1``은 3일 때만 갱신한다.
     """
     from datetime import UTC, datetime
     from pathlib import Path
@@ -85,7 +86,7 @@ def check_filings() -> None:
         for n in waiting:
             typer.echo(f"{line(n)}  (기한 {sec_13f_deadline(n['period_of_report'])})")
     if ready:
-        raise typer.Exit(1)
+        raise typer.Exit(3)
 
 
 @app.command()
