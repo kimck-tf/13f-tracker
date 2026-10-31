@@ -4,7 +4,7 @@
 
 ## 새 분기 13F 반영
 
-1. `data/13f.duckdb`를 복사해 백업한 뒤 `uv run thirteen-f collect --start <기존 DB와 같은 시작 분기>` — `update`는 `--start`를 넘기지 않아 기본값 `2011Q1`(Spec §1.3 설계 범위)부터 수집한다. 가격 단계가 전 종목(약 1,650개)을 다시 받으므로 2시간 가까이 걸린다 (2026-09 실측: EDGAR 1분, OpenFIGI 5분, 가격 약 2시간). 실행 중에는 DB가 잠겨 다른 프로세스가 읽을 수 없다.
+1. `data/13f.duckdb`를 복사해 백업한 뒤 `uv run thirteen-f update --skip-backtest --skip-export --skip-report` — `update`의 collect는 DB의 최소 분기부터 수집한다 (`--start`로 바꿀 수 있다). 가격 단계가 전 종목(약 1,650개)을 다시 받으므로 2시간 가까이 걸린다 (2026-09 실측: EDGAR 1분, OpenFIGI 5분, 가격 약 2시간). 실행 중에는 DB가 잠겨 다른 프로세스가 읽을 수 없다.
 2. SEC에 13F-HR을 낸 매니저 수와 `filings`의 새 분기 행 수가 같은지, 가격 실패 로그(`Both sources failed`)에 새 종목이 있는지 확인한다. 보유 중인데 가격이 끊긴 종목은 TROUBLESHOOTING.md의 "가격이 어느 날짜에서 끊김" 항목대로 처리한다.
 3. 새 ticker가 생겼으면 `uv run python scripts/supplement_sector.py`.
 4. `uv run thirteen-f update --skip-collect` — analyze → backtest --all → export → report. Quarto CLI가 없으면 `--skip-report`를 붙인다.

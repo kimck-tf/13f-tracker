@@ -48,8 +48,8 @@ uv run python scripts/init_db.py
 
 ```bash
 # 1) 전체 파이프라인 한 번 (collect → analyze → backtest → export → report)
-#    update는 collect를 --start 없이 실행해 2011Q1부터 수집한다. 기존 범위(2024Q1~)를 유지하려면
-#    uv run thirteen-f collect --start 2024Q1  →  uv run thirteen-f update --skip-collect
+#    update의 collect는 DB에 있는 가장 이른 분기부터 수집한다 (빈 DB면 2011Q1).
+#    범위를 바꾸려면 uv run thirteen-f update --start 2020Q1
 uv run thirteen-f update
 
 # 2) (선택) cusip_ticker_map.sector backfill — 신규 ticker 추가 후 1회

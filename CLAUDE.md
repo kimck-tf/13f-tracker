@@ -37,7 +37,7 @@ uv run thirteen-f targets --strategy ConsensusTopK    # 지금 이 전략의 목
 uv run thirteen-f export                    # DuckDB → src/thirteen_f/web/data/*.json
 uv run thirteen-f serve                     # http://127.0.0.1:8765, 장시간 실행이라 update에 없음
 uv run thirteen-f report --latest --open    # Quarto CLI 필요 → reports/output/_latest/
-uv run thirteen-f update                    # collect(--start 없이) → analyze → backtest --all → export → report, --skip-* 로 제외
+uv run thirteen-f update                    # collect(DB 최소 분기부터, --start로 변경) → analyze → backtest --all → export → report, --skip-* 로 제외
 
 uv run pytest tests/unit                    # 회귀 기준: 189건, 약 30초, 네트워크 불필요
 uv run pytest tests/unit/web/test_server.py::test_root_serves_static_index_html   # 단일 테스트

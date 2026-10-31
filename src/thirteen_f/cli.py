@@ -241,6 +241,9 @@ def export(
 
 @app.command()
 def update(
+    start: str = typer.Option(
+        None, "--start", help="collect 시작 분기 (예: 2024Q1). 생략하면 DB의 최소 분기"
+    ),
     skip_collect: bool = typer.Option(False, help="collect 단계 건너뛰기"),
     skip_backtest: bool = typer.Option(False, help="backtest 단계 건너뛰기"),
     skip_export: bool = typer.Option(False, help="export 단계 건너뛰기 (Phase 5)"),
@@ -268,8 +271,17 @@ def update(
             raise typer.Exit(result.returncode)
 
     if not skip_collect:
+        from thirteen_f.core.config import load_settings
+        from thirteen_f.core.db_tools import db_start_quarter
+
+        label = start or db_start_quarter(load_settings().duckdb_path)
+        collect_args = ["collect"]
+        if label:
+            collect_args += ["--start", label]
+            if not start:
+                typer.echo(f"collect range: --start {label} (DB 최소 분기)")
         typer.echo("=== Phase 1: collect ===")
-        run_step(["collect"])
+        run_step(collect_args)
     typer.echo("=== Phase 2: analyze ===")
     run_step(["analyze"])
     if not skip_backtest:
