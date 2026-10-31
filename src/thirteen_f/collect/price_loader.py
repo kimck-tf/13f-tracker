@@ -266,8 +266,11 @@ def download_prices(
 
                 if all(same(ra, 1.0) and same(rc, 1.0) for ra, rc in ratios):
                     pass  # 겹치는 날이 모두 같다 — 그대로 덮어쓴다
-                elif all(same(ra, r_adj) and same(rc, r_close) for ra, rc in ratios):
-                    # 배당·분할의 소급 조정은 이력 전체에 같은 배율이다.
+                elif len(ratios) >= 2 and all(
+                    same(ra, r_adj) and same(rc, r_close) for ra, rc in ratios
+                ):
+                    # 배당·분할의 소급 조정은 이력 전체에 같은 배율이다 (겹치는 날이 하루뿐이면
+                    # 조정과 데이터 정정을 구별할 수 없어 아래의 재다운로드로 간다).
                     # 겹치는 날은 뒤의 upsert가 덮고, 새 데이터가 NaN이라
                     # 덮이지 않는 날도 같은 배율로 맞춰진다
                     conn.execute(

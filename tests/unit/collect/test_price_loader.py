@@ -192,3 +192,17 @@ def test_download_prices_backfills_when_start_precedes_stored_history(conn, monk
     calls = _fake(monkeypatch, [_frame(date(2024, 1, 2), 3)])
     download_prices(conn, ["AAA"], start=date(2024, 1, 1))
     assert calls == [("AAA", date(2024, 1, 1))]
+
+
+def test_download_prices_refetches_when_only_one_stored_day_overlaps(conn, monkeypatch):
+    """겹치는 날이 하루뿐이면(거래가 드문 종목) 비율 하나로는 배당·분할과 데이터 정정을 구별할 수
+    없다 — 0.3% 다르다고 저장 이력 전체에 곱하지 말고 처음부터 다시 받는다."""
+    _seed(conn, "AAA", date(2026, 7, 17), 1)
+    _seed(conn, "AAA", date(2026, 9, 14), 1)  # 겹침 창(09-04 ~ 09-14)에는 이 하루만 있다
+    full = _frame(date(2024, 1, 1), 5, close=7.0)
+    calls = _fake(monkeypatch, [_frame(date(2026, 9, 4), 17, close=100.3), full])
+    download_prices(conn, ["AAA"], start=date(2026, 7, 17))
+    assert calls[1] == ("AAA", date(2026, 7, 17))
+    assert conn.execute(
+        "SELECT close FROM prices WHERE ticker = 'AAA' AND date = DATE '2026-07-17'"
+    ).fetchone() == (100.0,)  # 재스케일되지 않았다
