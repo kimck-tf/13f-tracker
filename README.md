@@ -102,6 +102,8 @@ print(c.execute('''
 
 **unit 189 passed · integration 3 passed + 1 skipped** (collect e2e는 로컬 VCR 카세트를 `RECORD_VCR=1`로 녹화해야 실행). (Frontend SPA는 단위 테스트 X — `thirteen-f serve` 후 브라우저 navigate 검증; LLM은 httpx mock + structured JSON schema 검증; Quarto는 사용자 CLI 설치 후 검증)
 
+**CI**: GitHub Actions — `ruff check src tests scripts` + unit 테스트 (Python 3.12·3.14, `.github/workflows/ci.yml`). integration은 네트워크·VCR 때문에 제외.
+
 ## Backtest Snapshot (2024-01-02 ~ 2026-09-14, cost_bps=10, 2026-09-20 실행)
 
 기본 8전략의 파라미터는 2026-09 탐색(`docs/backtest-optimization-2026-09.md`, 79개 설정, Calmar 기준)의 계열별 최적값이다. "이전 설정" 열은 탐색 전 파라미터로 2026-09-15에 실행한 값.
