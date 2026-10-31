@@ -74,7 +74,9 @@ def run_collect(
     3. mark_supersedes
     4. CUSIP fill_missing
     5. Download prices for unique tickers
-    6. Rescale filings reported in thousands of dollars (value_units)
+    6. Rescale filings reported in thousands of dollars (value_units) — also right after
+       step 3 inside the same transaction, so a later failure never leaves a re-parsed
+       filing at 1/1000
     """
     stats: dict[str, int] = {
         "managers": 0,
@@ -95,6 +97,10 @@ def run_collect(
 
             # 2) Reload yaml after resolve
             managers = yaml.safe_load(managers_yaml.read_text(encoding="utf-8"))
+            # 매니저 루프와 바로 뒤의 단위 보정은 한 트랜잭션이다. 범위 안 필링은 매번 다시
+            # 파싱돼 천 달러 원값으로 돌아가므로, 도중에 실패하면 커밋하지 않고(연결을 닫을 때
+            # 되돌려진다) 실행 전 값을 남긴다
+            conn.execute("BEGIN TRANSACTION")
             for m in managers:
                 if not m.get("cik"):
                     logger.warning("Skip %s (no CIK)", m.get("label"))
@@ -154,6 +160,14 @@ def run_collect(
 
                 mark_supersedes(conn, m["cik"])
 
+            # 분기말 가격이 이미 있는 필링은 여기서 다시 보정한다 — 뒤의 OpenFIGI·가격 단계가
+            # 실패해도 1/1000 값이 커밋되지 않게. 새 분기는 가격을 받은 뒤 7)에서 보정된다
+            fixed = fix_thousand_unit_filings(conn)
+            conn.execute("COMMIT")
+            stats["value_unit_fixed"] += len(fixed)
+            for acc in fixed:
+                logger.info("Value unit fixed (x1000): %s", acc)
+
             # 5) CUSIP fill missing
             all_cusips = [
                 r[0] for r in conn.execute(
@@ -179,7 +193,7 @@ def run_collect(
 
             # 7) 천 달러 단위 필링 보정 — 분기말 종가로 판정하므로 가격 다음에 둔다
             fixed = fix_thousand_unit_filings(conn)
-            stats["value_unit_fixed"] = len(fixed)
+            stats["value_unit_fixed"] += len(fixed)
             for acc in fixed:
                 logger.info("Value unit fixed (x1000): %s", acc)
 

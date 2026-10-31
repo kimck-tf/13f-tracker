@@ -22,7 +22,7 @@ CLAUDE.md `## Architecture`를 보충한다. 파일 목록은 `git ls-files`로 
 3. 매니저마다 `loader.mark_supersedes(cik)`로 정정본을 표시한다.
 4. `cusip_mapper.fill_missing` — `cusip_ticker_map`에 없는 CUSIP만 OpenFIGI로 조회해 캐시한다 (매핑 실패도 `ticker=NULL` 행으로 캐시되어 다시 조회하지 않는다). 첫 글자가 알파벳인 CINS 코드는 `ID_CINS`, 나머지는 `ID_CUSIP`으로 조회한다.
 5. `price_loader.download_prices` — ticker마다 yfinance, 비어 있으면 Stooq. 둘 다 실패하면 실패 로그(jsonl)에 추가한다.
-6. `value_units.fix_thousand_unit_filings` — 2023-01-03 이후인데도 금액을 천 달러로 낸 유효 필링을 찾아 `holdings.value_usd`를 ×1000 한다. 필링마다 ticker·분기말 종가가 있는 일반주 행의 `value_usd / (shares × close)` 중앙값이 0.01 미만이고 5행 이상이면 대상이다. 보정 뒤에는 비율이 ~1이라 다시 실행해도 한 번만 곱해진다.
+6. `value_units.fix_thousand_unit_filings` — 2023-01-03 이후인데도 금액을 천 달러로 낸 유효 필링을 찾아 `holdings.value_usd`를 ×1000 한다. 필링마다 ticker·분기말 종가가 있는 일반주 행의 `value_usd / (shares × close)` 중앙값이 0.01 미만이고 5행 이상이면 대상이다. 보정 뒤에는 비율이 ~1이라 다시 실행해도 한 번만 곱해진다. collect는 범위 안 필링을 매번 다시 파싱해 원값으로 되돌리므로, 매니저 루프(2·3단계)를 한 트랜잭션으로 묶고 커밋 직전에 한 번 더 보정한다 — 루프 도중 실패하면 커밋하지 않고, 뒤의 OpenFIGI·가격 단계가 실패해도 가격이 있는 분기는 이미 보정돼 있다. 새 분기는 가격을 받은 뒤 이 단계에서 보정된다.
 
 EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 초당 10건) `httpx.HTTPError`에 tenacity로 최대 4회 시도한다.
 

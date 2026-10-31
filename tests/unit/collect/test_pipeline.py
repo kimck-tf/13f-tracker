@@ -2,6 +2,7 @@ from datetime import date
 from unittest.mock import patch
 
 import duckdb
+import pytest
 
 from scripts.init_db import init_db
 from thirteen_f.collect.pipeline import _info_table_filename, run_collect
@@ -144,3 +145,90 @@ def test_extra_cik_filing_ignored_for_period_reported_by_primary_cik(tmp_path):
         "SELECT COUNT(*) FROM filings WHERE accession_no = 'acc-002339'"
     ).fetchone()[0] == 0
     conn.close()
+
+
+THOUSANDS_TABLE = (
+    b'<?xml version="1.0" encoding="UTF-8"?><informationTable '
+    b'xmlns="http://www.sec.gov/edgar/document/thirteenf/informationtable">'
+    + b"".join(
+        b"<infoTable><nameOfIssuer>C%d</nameOfIssuer><titleOfClass>COM</titleOfClass>"
+        b"<cusip>C0000000%d</cusip><value>1</value><shrsOrPrnAmt><sshPrnamt>10</sshPrnamt>"
+        b"<sshPrnamtType>SH</sshPrnamtType></shrsOrPrnAmt></infoTable>" % (i, i)
+        for i in range(5)
+    )
+    + b"</informationTable>"
+)
+YAML_A = "- name: A\n  label: A\n  cik: '0000000001'\n"
+YAML_B = "- name: B\n  label: B\n  cik: '0000000009'\n"
+
+
+class ThousandsEdgar(FakeEdgar):
+    """금액을 천 달러로 낸 13F-HR 하나(5행, 각 10주 × 종가 100 = $1,000인데 value 1)."""
+
+    def __init__(self):
+        super().__init__({"0000000001": [("acc-k", "2026-03-31", "2026-05-15")]})
+
+    def get_archive_file(self, cik, accession_no, filename):
+        return THOUSANDS_TABLE
+
+
+def _thousands_db(tmp_path):
+    db = tmp_path / "t.duckdb"
+    init_db(db)
+    c = duckdb.connect(str(db))
+    c.executemany(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, is_etf) VALUES (?, ?, FALSE)",
+        [(f"C0000000{i}", f"T{i}") for i in range(5)],
+    )
+    c.executemany(
+        "INSERT INTO prices VALUES (?, DATE '2026-03-31', 100, 100, 100, 100, 100, 1)",
+        [(f"T{i}",) for i in range(5)],
+    )
+    c.close()
+    managers_yaml = tmp_path / "managers.yaml"
+    managers_yaml.write_text(YAML_A, encoding="utf-8")
+    return db, managers_yaml
+
+
+def _values(db):
+    conn = duckdb.connect(str(db))
+    rows = conn.execute("SELECT DISTINCT value_usd FROM holdings WHERE accession_no = 'acc-k'")
+    out = sorted(r[0] for r in rows.fetchall())
+    conn.close()
+    return out
+
+
+def _collect(db, managers_yaml, fill_missing_error=None):
+    settings = Settings(sec_user_agent="ua", openfigi_api_key="", duckdb_path=db)
+    if fill_missing_error is None:
+        fm = patch("thirteen_f.collect.pipeline.fill_missing", return_value=0)
+    else:
+        fm = patch("thirteen_f.collect.pipeline.fill_missing", side_effect=fill_missing_error)
+    with (
+        patch("thirteen_f.collect.pipeline.EdgarClient", return_value=ThousandsEdgar()),
+        fm,
+        patch("thirteen_f.collect.pipeline.download_prices", return_value={}),
+    ):
+        run_collect(settings, managers_yaml, db, date(2024, 1, 1))
+
+
+def test_a_failure_after_parsing_keeps_the_thousand_unit_fix(tmp_path):
+    """collect는 범위 안 필링을 매번 다시 파싱해 천 달러 원값으로 되돌린다. 뒤의 OpenFIGI 단계가
+    실패해도(429) 이미 보정된 필링이 1/1000로 남으면 안 된다."""
+    db, managers_yaml = _thousands_db(tmp_path)
+    _collect(db, managers_yaml)
+    assert _values(db) == [1000]
+    with pytest.raises(RuntimeError):
+        _collect(db, managers_yaml, fill_missing_error=RuntimeError("OpenFIGI 429"))
+    assert _values(db) == [1000]
+
+
+def test_a_failure_inside_the_manager_loop_rolls_back_the_reparse(tmp_path):
+    """매니저 루프 도중 실패하면(다음 매니저의 EDGAR 요청) 이미 다시 파싱한 필링도 실행 전
+    값으로 돌아간다."""
+    db, managers_yaml = _thousands_db(tmp_path)
+    _collect(db, managers_yaml)
+    managers_yaml.write_text(YAML_A + YAML_B, encoding="utf-8")
+    with pytest.raises(KeyError):  # 가짜 EDGAR에 B의 제출 목록이 없다
+        _collect(db, managers_yaml)
+    assert _values(db) == [1000]
