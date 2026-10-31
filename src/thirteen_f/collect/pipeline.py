@@ -21,6 +21,7 @@ from thirteen_f.collect.loader import (
 from thirteen_f.collect.parser import parse_amendment_type, parse_information_table
 from thirteen_f.collect.price_loader import download_prices
 from thirteen_f.collect.resolve_cik import resolve_missing_ciks
+from thirteen_f.collect.value_units import fix_thousand_unit_filings
 from thirteen_f.core.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,7 @@ def run_collect(
     3. mark_supersedes
     4. CUSIP fill_missing
     5. Download prices for unique tickers
+    6. Rescale filings reported in thousands of dollars (value_units)
     """
     stats: dict[str, int] = {
         "managers": 0,
@@ -81,6 +83,7 @@ def run_collect(
         "holdings_rows": 0,
         "cusip_resolved": 0,
         "price_tickers": 0,
+        "value_unit_fixed": 0,
     }
 
     conn = duckdb.connect(str(db_path))
@@ -170,6 +173,12 @@ def run_collect(
             price_results = download_prices(conn, tickers, start_date, failure_log)
             n_failed = sum(1 for v in price_results.values() if v == 0)
             logger.info("Prices: %d tickers downloaded, %d failed", len(tickers) - n_failed, n_failed)
+
+            # 7) 천 달러 단위 필링 보정 — 분기말 종가로 판정하므로 가격 다음에 둔다
+            fixed = fix_thousand_unit_filings(conn)
+            stats["value_unit_fixed"] = len(fixed)
+            for acc in fixed:
+                logger.info("Value unit fixed (x1000): %s", acc)
 
     finally:
         conn.close()
