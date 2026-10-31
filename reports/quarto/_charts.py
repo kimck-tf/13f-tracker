@@ -1,4 +1,4 @@
-"""Plotly chart builders. Streamlit/Quarto 양쪽에서 import."""
+"""Quarto 리포트용 plotly 차트 (`01_overview.qmd`·`04_backtest.qmd`가 같은 폴더에서 import)."""
 from __future__ import annotations
 
 import pandas as pd
@@ -89,14 +89,4 @@ def change_waterfall(counts: dict[str, int]) -> go.Figure:
         textfont=dict(family="IBM Plex Mono, monospace", size=11, color="#E6EAF0"),
     ))
     fig.update_layout(title="Change Type Distribution", height=300, showlegend=False)
-    return fig
-
-
-def portfolio_treemap(weights: dict[str, float], label_col: str = "Ticker") -> go.Figure:
-    fig = px.treemap(
-        names=list(weights.keys()),
-        parents=[""] * len(weights),
-        values=list(weights.values()),
-    )
-    fig.update_layout(title=f"Portfolio Weights ({label_col})", height=500)
     return fig

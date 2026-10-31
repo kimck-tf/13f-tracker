@@ -35,7 +35,7 @@ EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 �
 4. `consensus.compute_consensus` — 분기×종목의 보유 거장 수, 신규매수 거장 수.
 5. `score.compute_total_scores` — consensus(보유 거장 수 ÷ 그 분기에 유효 필링을 낸 거장 수), conviction 평균, continuity 평균, cloning_quality(`managers.cloning_score_weight` 평균)를 `scoring.toml` 가중치로 합산한다. `exit` 행은 제외.
 
-`concentration.py`(HHI)와 `cloning_quality.py`는 이 파이프라인에서 호출되지 않는다. HHI는 `_legacy_dashboard`만 쓰고 cloning_quality 계산은 `score.py` SQL에 인라인돼 있으므로, 점수 공식은 `score.py`에서 바꾼다.
+`concentration.py`(HHI)와 `cloning_quality.py`는 이 파이프라인에서 호출되지 않는다. HHI는 Streamlit 대시보드 삭제(2026-10-31) 뒤 쓰는 곳이 없고 cloning_quality 계산은 `score.py` SQL에 인라인돼 있으므로, 점수 공식은 `score.py`에서 바꾼다.
 
 ## backtest (Phase 3)
 
@@ -70,7 +70,7 @@ EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 �
 ## report / legacy
 
 - `cli.py:report` — Quarto는 렌더 중 cwd를 `reports/quarto/`로 바꾸므로 CLI가 `.env`를 직접 읽어 환경변수로 넘기고 `DUCKDB_PATH`를 절대경로로 바꾼다. 분기는 `-P` 인자 대신 `THIRTEEN_F_QUARTER` 환경변수로 전달하고, qmd 셀은 `_common.py:resolve_quarter`로 읽는다. `04_backtest.qmd`는 누적된 run 중 전략별 최신 run만 표·차트로 비교한다.
-- `_legacy_dashboard/` — Streamlit이 의존성에서 빠져 페이지는 실행되지 않는다. `charts.py`(plotly)만 Quarto `01_overview.qmd`·`04_backtest.qmd`가 import한다.
+- `reports/quarto/_charts.py` — Quarto `01_overview.qmd`·`04_backtest.qmd` 전용 plotly 차트. Phase 4 Streamlit 대시보드(`_legacy_dashboard/`)는 2026-10-31에 삭제했다.
 
 ## 설계 문서 지도
 

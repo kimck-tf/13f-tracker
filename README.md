@@ -92,7 +92,7 @@ print(c.execute('''
 - [x] Phase 1 — EDGAR 수집 (15명 / 110 filings / 10,867 holdings / 1,584 price tickers)
 - [x] Phase 2 — 4 시그널 + 종합 점수 (10,759 signals / 8,785 total_scores)
 - [x] Phase 3 — Strategy ABC + 7 전략(MultiManager 추가) + Lookahead-safe + Engine + Runner
-- [x] Phase 4 — Quarto 6 챕터 + report CLI (Streamlit 5페이지는 `_legacy_dashboard/`로 격리)
+- [x] Phase 4 — Quarto 6 챕터 + report CLI (Streamlit 5페이지는 2026-10-31에 삭제, 차트는 `reports/quarto/_charts.py`)
 - [x] Phase 4+ — Gemini LLM 통합 (분기 헤드라인 요약 + Top 10 시그널 해석, thinking on/off 토글)
 - [x] Phase 5 — Static SPA (9페이지) + FastAPI 정적 서버 + DuckDB→JSON exporter + Gemini `/api/ask` chat + per-IP rate limit
 - [x] Phase 5 Code Review Fix — 12 finding 반영 (4 Critical + 8 Important): BACKTESTS 정밀 매칭 + SIM 배지, rate_limit GC, TICKER stop-list, export_stocks SQL 최적화(MAX_BY), chat_prompt injection 방어, ErrorScreen 친화 진단 등

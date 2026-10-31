@@ -64,7 +64,7 @@ DuckDB ─ export ─▶ web/data/*.json ─ serve(FastAPI) ─▶ SPA(web/stati
 - SPA는 빌드 단계가 없다. `web/static/index.html`이 CDN의 React 18 UMD와 Babel standalone으로 `.jsx`를 브라우저에서 변환하고, 파일끼리는 `<script>` 로드 순서와 `Object.assign(window, {...})` 전역으로 연결된다.
 - 사실 데이터는 backend exporter가 정답이고 frontend는 표시용 파생 계산만 한다. 두 계산이 어긋나면 frontend를 backend에 맞춘다.
 - Gemini는 선택 기능이다. `GOOGLE_API_KEY`가 없으면 Quarto LLM 셀은 안내 문구, `/api/ask`는 503을 내고 나머지 기능은 그대로 동작해야 한다.
-- `_legacy_dashboard/`는 Phase 4 Streamlit 격리본이다. Quarto `01_overview.qmd`·`04_backtest.qmd`가 `_legacy_dashboard.charts`를 import하므로 유지하되 새 기능은 넣지 않는다.
+- `reports/quarto/_charts.py`는 Quarto 전용 plotly 차트다. `01_overview.qmd`·`04_backtest.qmd`가 같은 폴더의 `_common.py`처럼 import한다 (Phase 4 Streamlit 대시보드는 2026-10-31에 삭제).
 
 ## Invariants
 
