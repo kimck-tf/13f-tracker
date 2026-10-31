@@ -185,7 +185,7 @@ def _overlap_pairs(
 ) -> list[tuple[float, float, float, float]]:
     """새로 받은 df와 DB에 모두 있는 날의 (새 close, 새 adj_close, DB close, DB adj_close), 날짜순.
 
-    새 값이 NaN인 날(확정 전 거래일)과 DB 값이 0 이하인 날은 뺀다.
+    새 값이 NaN인 날(확정 전 거래일)과 새 값·DB 값이 0 이하인 날은 뺀다.
     """
     first = df.index.min().date()
     stored = {
@@ -200,6 +200,8 @@ def _overlap_pairs(
         d = idx.date()
         new_close, new_adj = row.get("Close"), row.get("Adj Close", row.get("Close"))
         if d not in stored or pd.isna(new_close) or pd.isna(new_adj):
+            continue
+        if new_close <= 0 or new_adj <= 0:
             continue
         db_close, db_adj = stored[d]
         if not db_close or not db_adj or db_close <= 0 or db_adj <= 0:
@@ -216,9 +218,11 @@ def download_prices(
 ) -> dict[str, int]:
     """Download daily prices for tickers; return {ticker: row_count}.
 
-    이미 가격이 있는 ticker는 마지막 저장일 `OVERLAP_DAYS`일 전부터만 받는다. 겹치는 날의
-    수정 종가가 상수 배율로 달라졌으면(배당·분할의 소급 조정) 그 전 이력을 같은 배율로
-    재스케일하고, 배율이 날마다 다르면(데이터 정정) `start`부터 전체를 다시 받는다.
+    이미 가격이 있는 ticker는 마지막 저장일 `OVERLAP_DAYS`일 전부터만 받는다.
+    겹치는 날이 모두 같으면 그대로 덮어쓰고, 모두 한 배율로 달라졌으면(배당·분할의
+    소급 조정) 그 ticker의 저장 이력 전체를 같은 배율로 재스케일한 뒤 덮어쓴다.
+    그 밖(데이터 정정, 저장 이력 안의 단절)이면 `start`부터 전체를 다시 받는다.
+    `start`가 저장된 가장 이른 가격보다 앞이면(수집 범위를 앞당김) 전 종목을 `start`부터 받는다.
     yfinance 요청은 fetch 시작일이 같은 ticker끼리 `BATCH_SIZE`개씩 묶어 보내고, 배치 결과에 없는
     ticker만 단일 경로(yfinance → Stooq)로 다시 받는다.
     Tickers with no data after both yfinance and Stooq are appended to failure_log.
@@ -226,9 +230,17 @@ def download_prices(
     results: dict[str, int] = {}
     failed: list[str] = []
     last_dates = _last_price_dates(conn)
+    first_row = conn.execute("SELECT MIN(date) FROM prices").fetchone()
+    stored_first = first_row[0] if first_row else None
+    backfill = stored_first is not None and start < stored_first - timedelta(days=OVERLAP_DAYS)
+    if backfill:
+        logger.info("start %s precedes stored prices (%s); fetching every ticker from start",
+                    start, stored_first)
     todo = sorted(set(t for t in tickers if t))
     fetch_start = {
-        t: start if last_dates.get(t) is None else last_dates[t] - timedelta(days=OVERLAP_DAYS)
+        t: start
+        if backfill or last_dates.get(t) is None
+        else last_dates[t] - timedelta(days=OVERLAP_DAYS)
         for t in todo
     }
     by_start: dict[date, list[str]] = {}
@@ -246,29 +258,29 @@ def download_prices(
         if df is not None and last is not None:
             pairs = _overlap_pairs(conn, t, df)
             if pairs:
-                new_close, new_adj, db_close, db_adj = pairs[-1]
-                r_adj, r_close = new_adj / db_adj, new_close / db_close
-                if abs(r_adj - 1) > ADJ_TOLERANCE or abs(r_close - 1) > ADJ_TOLERANCE:
-                    consistent = all(
-                        abs(na / (da * r_adj) - 1) <= ADJ_TOLERANCE
-                        and abs(nc / (dc * r_close) - 1) <= ADJ_TOLERANCE
-                        for nc, na, dc, da in pairs
+                ratios = [(na / da, nc / dc) for nc, na, dc, da in pairs]
+                r_adj, r_close = ratios[-1]
+
+                def same(x: float, y: float) -> bool:
+                    return abs(x / y - 1) <= ADJ_TOLERANCE
+
+                if all(same(ra, 1.0) and same(rc, 1.0) for ra, rc in ratios):
+                    pass  # 겹치는 날이 모두 같다 — 그대로 덮어쓴다
+                elif all(same(ra, r_adj) and same(rc, r_close) for ra, rc in ratios):
+                    # 배당·분할의 소급 조정은 이력 전체에 같은 배율이다.
+                    # 겹치는 날은 뒤의 upsert가 덮고, 새 데이터가 NaN이라
+                    # 덮이지 않는 날도 같은 배율로 맞춰진다
+                    conn.execute(
+                        "UPDATE prices SET adj_close = adj_close * ?, open = open * ?, "
+                        "high = high * ?, low = low * ?, close = close * ? WHERE ticker = ?",
+                        (r_adj, r_close, r_close, r_close, r_close, t),
                     )
-                    if consistent:
-                        first = df.index.min().date()
-                        conn.execute(
-                            "UPDATE prices SET adj_close = adj_close * ?, open = open * ?, "
-                            "high = high * ?, low = low * ?, close = close * ? "
-                            "WHERE ticker = ? AND date < ?",
-                            (r_adj, r_close, r_close, r_close, r_close, t, first),
-                        )
-                        logger.info(
-                            "Rescaled %s history before %s (adj x%.6f, close x%.6f)",
-                            t, first, r_adj, r_close,
-                        )
-                    else:
-                        logger.info("Overlap for %s disagrees; refetching from %s", t, start)
-                        df = _fetch(t, start)
+                    logger.info(
+                        "Rescaled %s history (adj x%.6f, close x%.6f)", t, r_adj, r_close
+                    )
+                else:
+                    logger.info("Overlap for %s disagrees; refetching from %s", t, start)
+                    df = _fetch(t, start)
         if df is None:
             logger.error("Both sources failed for %s", t)
             failed.append(t)

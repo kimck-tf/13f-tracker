@@ -89,7 +89,7 @@ def _fake(monkeypatch, frames):
 def test_download_prices_fetches_from_overlap_window_when_history_exists(conn, monkeypatch):
     _seed(conn, "AAA", date(2026, 9, 1), 14)  # 09-01 ~ 09-14 저장됨
     calls = _fake(monkeypatch, [_frame(date(2026, 9, 4), 17)])  # 09-04 ~ 09-20, 값 동일
-    download_prices(conn, ["AAA"], start=date(2024, 1, 1))
+    download_prices(conn, ["AAA"], start=date(2026, 9, 1))
     assert calls == [("AAA", date(2026, 9, 4))]  # 마지막 날 − 10일부터
     assert conn.execute(
         "SELECT COUNT(*), MAX(date) FROM prices WHERE ticker = 'AAA'"
@@ -99,14 +99,14 @@ def test_download_prices_fetches_from_overlap_window_when_history_exists(conn, m
 def test_download_prices_rescales_history_after_dividend_or_split(conn, monkeypatch):
     _seed(conn, "AAA", date(2026, 9, 1), 14)
     new = _frame(date(2026, 9, 4), 17, adj_scale=0.9)  # 배당 조정: 겹치는 날의 Adj Close가 0.9배
-    new.iloc[-1, new.columns.get_loc("Adj Close")] = float("nan")  # 마지막 날은 미확정 NaN
+    # 저장 범위 안의 마지막 겹침일(09-14)이 미확정 NaN — 비율은 두 쪽 모두 값이 있는 09-13로 구하고,
+    # upsert가 건너뛰는 09-14도 같은 비율로 재스케일돼야 한다
+    new.iloc[10, new.columns.get_loc("Adj Close")] = float("nan")
     calls = _fake(monkeypatch, [new])
-    download_prices(conn, ["AAA"], start=date(2024, 1, 1))
+    download_prices(conn, ["AAA"], start=date(2026, 9, 1))
     assert len(calls) == 1  # 전체 재다운로드 없이
-    hist = conn.execute(
-        "SELECT DISTINCT adj_close FROM prices WHERE ticker = 'AAA' AND date < DATE '2026-09-04'"
-    ).fetchall()
-    assert hist == [(pytest.approx(90.0),)]  # 이전 이력이 같은 비율로 재스케일
+    hist = conn.execute("SELECT DISTINCT adj_close FROM prices WHERE ticker = 'AAA'").fetchall()
+    assert hist == [(pytest.approx(90.0),)]  # 저장 이력 전체가 같은 비율로 재스케일
     assert conn.execute("SELECT DISTINCT close FROM prices WHERE ticker = 'AAA'").fetchall() == [
         (100.0,)
     ]
@@ -120,8 +120,8 @@ def test_download_prices_refetches_everything_when_overlap_disagrees(conn, monke
     )
     full = _frame(date(2024, 1, 1), 5, close=7.0)
     calls = _fake(monkeypatch, [bad, full])
-    download_prices(conn, ["AAA"], start=date(2024, 1, 1))
-    assert calls[1] == ("AAA", date(2024, 1, 1))
+    download_prices(conn, ["AAA"], start=date(2026, 9, 1))
+    assert calls[1] == ("AAA", date(2026, 9, 1))
     assert (
         conn.execute("SELECT COUNT(*) FROM prices WHERE ticker = 'AAA' AND close = 7.0").fetchone()[
             0
@@ -155,3 +155,40 @@ def test_download_prices_batches_tickers_with_the_same_start(conn, monkeypatch):
     assert batch_calls == [(("AAA", "BBB", "MISSING"), date(2024, 1, 1))]
     assert single_calls == [("MISSING", date(2024, 1, 1))]  # 배치에 빠진 종목만 단일 경로
     assert conn.execute("SELECT COUNT(DISTINCT ticker) FROM prices").fetchone()[0] == 3
+
+
+def test_download_prices_refetches_when_stored_history_breaks_inside_the_overlap(
+    conn, monkeypatch
+):
+    # 저장 이력 안의 단절(09-07까지 200, 09-08부터 100) + 새 값은 모두 100.
+    # 마지막 날 비율만 보면 1이라 겹치는 구간만 덮어쓰고 단절이 09-04로 옮겨 남는다
+    # → 전체를 다시 받아야 한다
+    _seed(conn, "AAA", date(2026, 9, 1), 7, close=200.0)
+    _seed(conn, "AAA", date(2026, 9, 8), 7, close=100.0)
+    calls = _fake(monkeypatch, [_frame(date(2026, 9, 4), 17), _frame(date(2026, 9, 1), 20)])
+    download_prices(conn, ["AAA"], start=date(2026, 9, 1))
+    assert calls == [("AAA", date(2026, 9, 4)), ("AAA", date(2026, 9, 1))]
+    closes = conn.execute("SELECT DISTINCT close FROM prices WHERE ticker = 'AAA'").fetchall()
+    assert closes == [(100.0,)]
+
+
+def test_download_prices_ignores_zero_prices_in_the_overlap(conn, monkeypatch):
+    _seed(conn, "AAA", date(2026, 9, 1), 14)
+    new = _frame(date(2026, 9, 4), 17, adj_scale=0.9)
+    for col in ("Close", "Adj Close"):
+        new.iloc[10, new.columns.get_loc(col)] = 0.0  # 09-14에 잘못 들어온 0 가격
+    _fake(monkeypatch, [new])
+    download_prices(conn, ["AAA"], start=date(2026, 9, 1))  # ZeroDivisionError 없이 끝난다
+    hist = conn.execute(
+        "SELECT DISTINCT adj_close FROM prices WHERE ticker = 'AAA' AND date < DATE '2026-09-14'"
+    ).fetchall()
+    assert hist == [(pytest.approx(90.0),)]
+
+
+def test_download_prices_backfills_when_start_precedes_stored_history(conn, monkeypatch):
+    # 수집 범위를 앞당기면(update --start 2020Q1) 이미 있는 ticker도 start부터 받아야
+    # 앞부분이 비지 않는다
+    _seed(conn, "AAA", date(2026, 9, 1), 14)
+    calls = _fake(monkeypatch, [_frame(date(2024, 1, 2), 3)])
+    download_prices(conn, ["AAA"], start=date(2024, 1, 1))
+    assert calls == [("AAA", date(2024, 1, 1))]
