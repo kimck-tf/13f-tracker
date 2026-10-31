@@ -25,11 +25,12 @@ function DashboardScreen({ quarter, setQuarter }) {
     return Object.entries(flow).map(([sec, v]) => ({ sec, v })).sort((a, b) => b.v - a.v);
   }, [summary]);
 
-  // spotlight chart: ticker price series with manager entry marker
-  const spotSeries = spot ? [{
+  // spotlight chart: 이 종목의 최근 12주 주간 종가(pxw) — 고른 분기와 무관하게 최신 12주다
+  const spotPx = spot && Array.isArray(spot.stock.pxw) ? spot.stock.pxw : [];
+  const spotSeries = spotPx.length >= 2 ? [{
     label: spot.ticker,
     color: "var(--ink)",
-    values: spot.stock.pxw,
+    values: spotPx,
     width: 1.8
   }] : [];
 
@@ -66,15 +67,19 @@ function DashboardScreen({ quarter, setQuarter }) {
           }>
           
             <div className="dash-spot-body">
+              {spotSeries.length ? (
               <LineChart
               series={spotSeries}
               w={920}
               h={240}
               formatY={(v) => "$" + v.toFixed(0)}
               formatX={(i) => {
-                const q = Math.floor(i / 8);
-                return q < Q_LABELS.length ? Q_LABELS[q] : "";
+                const ago = spotPx.length - 1 - i;
+                return ago === 0 ? "이번 주" : `${ago}주 전`;
               }} />
+              ) : (
+              <div className="muted" style={{ padding: 16 }}>가격 데이터 없음</div>
+              )}
             
               <div className="dash-spot-side">
                 <div className="dash-spot-side-hd mono">Also holding {spot.ticker} this quarter</div>

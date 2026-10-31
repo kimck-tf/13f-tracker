@@ -336,6 +336,7 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
         """
     ).fetchall()
 
+    suite_names = {s.name for s in default_suite()}
     payload: list[dict] = []
     for (
         run_id, name, params_json, _sd, _ed, cost_bps,
@@ -365,6 +366,7 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
             "name": name,
             "params": json.loads(params_json) if params_json else {},
             "costBps": cost_bps,
+            "inSuite": name in suite_names,
             "equity": equity,
             "dd": dd,
             "qrets": qrets,

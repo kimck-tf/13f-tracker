@@ -1,14 +1,16 @@
 // 13F Terminal — Backtest screen (backend backtest runs only)
 
 function BacktestScreen({ route, quarter, setQuarter }) {
-  // 칩 = 전략 이름별 최신 backend run 하나씩. BACKTESTS는 created_at DESC라 이름별 첫 항목이 최신이다.
+  // 칩 = 기본 suite(backtest --all) 전략 이름별 최신 backend run 하나씩. BACKTESTS는 created_at DESC라
+  // 이름별 첫 항목이 최신이다. --strategy 단일 실행 run(inSuite false)은 칩으로 만들지 않고,
+  // 곡선이 없는 run은 건너뛰어 같은 이름의 이전 run을 쓴다.
   const [strategies, setStrategies] = useState(() => {
     const seen = new Set();
     const list = [];
     for (const r of Array.isArray(BACKTESTS) ? BACKTESTS : []) {
-      if (!r || typeof r.name !== "string" || seen.has(r.name)) continue;
-      seen.add(r.name);
+      if (!r || typeof r.name !== "string" || seen.has(r.name) || r.inSuite === false) continue;
       if (!Array.isArray(r.equity) || r.equity.length === 0) continue;
+      seen.add(r.name);
       list.push({ id: r.run_id, name: r.name, type: r.name.split("(")[0], color: nextColor(list), on: true, run: r });
     }
     return list;
@@ -59,7 +61,8 @@ function BacktestScreen({ route, quarter, setQuarter }) {
 
   const bestCAGR = results.length ? Math.max(...results.map(r => r.data.cagr)) : 0;
   const bestSharpe = results.length ? Math.max(...results.map(r => r.data.sharpe)) : 0;
-  const deepestMDD = results.length ? Math.min(...results.map(r => r.data.maxDD)) : 0;
+  // backend maxDD는 양수 비율(0.32 = 32% 낙폭)이라 가장 깊은 낙폭은 최댓값이다
+  const deepestMDD = results.length ? Math.max(...results.map(r => r.data.maxDD)) : 0;
   const benchCAGR = results[0]?.data.benchCagr || 0;
 
   function toggleStrategy(id) {

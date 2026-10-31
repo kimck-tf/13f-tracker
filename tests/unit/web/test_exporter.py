@@ -346,3 +346,19 @@ def test_export_stocks_includes_last_12_weekly_closes(conn, tmp_path: Path):
     assert len(msft) == 12 and msft[-1] == 100.0 and msft == sorted(msft)
     assert msft[-2] == 93.0  # 직전 ISO 주(06-17~06-23)의 마지막 날 06-23 = 93
     assert stocks["AAPL"]["pxw"] == [200.5]  # fixture의 06-28·06-30은 같은 ISO 주 → 1점
+
+
+def test_export_backtest_marks_runs_of_the_default_suite(conn, tmp_path: Path):
+    """Backtest 화면은 기본 suite(backtest --all) run만 칩으로 만든다 — 단일 실행 run을 구별한다."""
+    conn.executemany(
+        "INSERT INTO backtest_runs (run_id, strategy_name, params_json, start_date, end_date, "
+        "benchmark, cost_bps, created_at) VALUES (?, ?, '{}', DATE '2024-01-02', "
+        "DATE '2024-12-31', 'SPY', 10.0, NOW())",
+        [("r1", "ConsensusTopK(3,10)"), ("r2", "SingleManagerClone(Ackman)")],
+    )
+    export_backtest(conn, tmp_path)
+    data = json.loads((tmp_path / "backtest.json").read_text(encoding="utf-8"))
+    assert {r["name"]: r["inSuite"] for r in data} == {
+        "ConsensusTopK(3,10)": True,
+        "SingleManagerClone(Ackman)": False,
+    }
