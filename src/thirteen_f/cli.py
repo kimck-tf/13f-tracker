@@ -75,7 +75,10 @@ def check_filings() -> None:
     waiting = [n for n in new if n not in ready]
 
     def line(n: dict) -> str:
-        return f"  {n['label']:14s} {n['period_of_report']}  {n['filed_at']}  {n['accession_no']}"
+        return (
+            f"  {n['label']:14s} {n['form_type']:8s} {n['period_of_report']}  {n['filed_at']}"
+            f"  {n['accession_no']}"
+        )
 
     if ready:
         typer.echo(f"새 13F-HR {len(ready)}건")

@@ -12,16 +12,30 @@ from thirteen_f.collect.watch import find_new_filings
 FIXTURE = Path(__file__).parent.parent.parent / "fixtures" / "edgar" / "submissions_buffett.json"
 
 
-class FakeClient:
-    """CIK별 submissions를 돌려준다. 지정하지 않은 CIK는 Buffett fixture."""
+def _cover(amendment_type: str) -> bytes:
+    return (
+        b'<?xml version="1.0"?><edgarSubmission xmlns="http://www.sec.gov/edgar/thirteenffiler">'
+        b"<formData><coverPage><amendmentInfo><amendmentType>"
+        + amendment_type.encode()
+        + b"</amendmentType></amendmentInfo></coverPage></formData></edgarSubmission>"
+    )
 
-    def __init__(self, subs: dict | None = None):
+
+class FakeClient:
+    """CIK별 submissions를 돌려준다. 지정하지 않은 CIK는 Buffett fixture.
+    정정본 표지는 covers에 없으면 NEW HOLDINGS(추가분만 담은 정정)."""
+
+    def __init__(self, subs: dict | None = None, covers: dict | None = None):
         self.calls: list[str] = []
         self.subs = subs or {}
+        self.covers = covers or {}
 
     def get_submissions(self, cik):
         self.calls.append(cik)
         return self.subs.get(cik) or json.loads(FIXTURE.read_text(encoding="utf-8"))
+
+    def get_archive_file(self, cik, accession_no, filename):
+        return self.covers.get(accession_no, _cover("NEW HOLDINGS"))
 
 
 def _subs(*rows: tuple[str, str, str, str]) -> dict:
@@ -59,7 +73,7 @@ def test_reports_only_original_13f_hr_not_in_db(tmp_path):
     client = FakeClient()
     new = find_new_filings(c, client, managers)
     assert client.calls == ["0001067983", "0002026053"]  # CIK 없는 매니저는 collect처럼 건너뛴다
-    # 13F-HR 원본 2건을 filed_at 순으로 — 13F-HR/A(…16)·10-K(…14)는 빼고, extra CIK가 같은
+    # 13F-HR 원본 2건을 filed_at 순으로 — NEW HOLDINGS 정정(…16)·10-K(…14)는 빼고, extra CIK가 같은
     # 분기에 낸 것(fixture가 같아 전부)도 뺀다
     assert [n["accession_no"] for n in new] == ["0001067983-24-000015", "0001067983-24-000017"]
     assert all(n["label"] == "Buffett" and n["filer_cik"] == "0001067983" for n in new)
@@ -97,3 +111,22 @@ def test_filings_before_the_db_first_quarter_are_ignored(tmp_path):
     c = _conn(tmp_path)
     _store(c, "0001067983-24-000017", "2024-03-31", "2024-05-15")
     assert find_new_filings(c, FakeClient(), [{"label": "Buffett", "cik": "0001067983"}]) == []
+
+
+def test_restatements_count_but_new_holdings_amendments_do_not(tmp_path):
+    """collect는 원본을 대체하는 정정본(RESTATEMENT)을 적재하고, 추가분만 담은 NEW HOLDINGS 정정본은
+    적재하지 않는다 — 감지도 같게 (Li Lu 2025Q4: 기한 이틀 뒤 원본을 대체한 정정본)."""
+    c = _conn(tmp_path)
+    _store(c, "orig-1", "2025-12-31", "2026-02-17")
+    client = FakeClient(
+        {
+            "0001067983": _subs(
+                ("orig-1", "13F-HR", "2026-02-17", "2025-12-31"),
+                ("amend-r", "13F-HR/A", "2026-02-19", "2025-12-31"),
+                ("amend-n", "13F-HR/A", "2026-02-20", "2025-12-31"),
+            )
+        },
+        covers={"amend-r": _cover("RESTATEMENT")},
+    )
+    new = find_new_filings(c, client, [{"label": "Buffett", "cik": "0001067983"}])
+    assert [(n["accession_no"], n["form_type"]) for n in new] == [("amend-r", "13F-HR/A")]

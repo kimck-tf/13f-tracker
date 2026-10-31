@@ -43,6 +43,7 @@ def _filing(acc: str, period: date, filed: date, label: str = "Buffett") -> dict
         "label": label,
         "filer_cik": "0001067983",
         "accession_no": acc,
+        "form_type": "13F-HR",
         "period_of_report": period,
         "filed_at": filed,
     }
