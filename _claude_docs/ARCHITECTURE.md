@@ -70,11 +70,11 @@ EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 �
 ## report / legacy
 
 - `cli.py:report` — Quarto는 렌더 중 cwd를 `reports/quarto/`로 바꾸므로 CLI가 `.env`를 직접 읽어 환경변수로 넘기고 `DUCKDB_PATH`를 절대경로로 바꾼다. 분기는 `-P` 인자 대신 `THIRTEEN_F_QUARTER` 환경변수로 전달하고, qmd 셀은 `_common.py:resolve_quarter`로 읽는다. `04_backtest.qmd`는 누적된 run 중 전략별 최신 run만 표·차트로 비교한다.
-- `reports/quarto/_charts.py` — Quarto `01_overview.qmd`·`04_backtest.qmd` 전용 plotly 차트. Phase 4 Streamlit 대시보드(`_legacy_dashboard/`)는 2026-10-31에 삭제했다.
+- `reports/quarto/_charts.py` — Quarto `01_overview.qmd`·`04_backtest.qmd` 전용 plotly 차트. Phase 4 Streamlit 대시보드는 2026-10-31에 삭제했다.
 
 ## 설계 문서 지도
 
-- `docs/superpowers/specs/2026-05-20-13f-tracker-design.md` — Phase 0~4 설계 기록. §4.2 스키마(`init_db.py`와 동일), §5 수집, §6 시그널, §7 백테스트, §10 Phase별 DoD. 구현 후 달라진 점(SPA 전환·`dashboard` 제거·MultiManager·Stooq 구현·`analysis.toml` 미사용)은 문서 상단 "현행화 노트"에 있고, 본문의 해당 절(§3.2, §7.2, §8 등)은 설계 당시 그대로다.
+- `docs/superpowers/specs/2026-05-20-13f-tracker-design.md` — Phase 0~4 설계 기록. §4.2 스키마(`init_db.py`와 동일), §5 수집, §6 시그널, §7 백테스트, §10 Phase별 DoD. 구현 후 달라진 점(SPA 전환·`dashboard` 제거·MultiManager·Stooq 구현·분석 설정 파일 미사용)은 문서 상단 "현행화 노트"에 있고, 본문의 해당 절(§3.2, §7.2, §8 등)은 설계 당시 그대로다.
 - `docs/superpowers/plans/2026-05-21-13f-tracker.md` — Phase 0~4 TDD step. Chunk 1~5 = Phase 0~4, Task N.x = Phase N.
 - `docs/superpowers/plans/2026-05-22-13f-frontend-migration.md` — Phase 5. Chunk A 백엔드 기반 · B 정적 서빙 · C 프론트 데이터 연결 · D MultiManager + Ask LLM · E 정리.
 - `참고/` — 구현 전 사전 조사 노트 (`PLAN.md`, `edgar_notes.md`, `schema.md`).
