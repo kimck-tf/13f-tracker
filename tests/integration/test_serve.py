@@ -1,12 +1,11 @@
 """Smoke test for `thirteen-f serve` — subprocess boot + /api/health=200.
 
-Skipped if uv is unavailable. The test polls the health endpoint instead of a
+현재 인터프리터로 `thirteen_f.cli serve`를 띄운다. The test polls the health endpoint instead of a
 fixed sleep so it survives slow startup; max wait ~10s.
 """
 from __future__ import annotations
 
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -25,10 +24,6 @@ def _free_port() -> int:
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    shutil.which("uv") is None,
-    reason="uv CLI not on PATH — required for subprocess invocation",
-)
 def test_serve_starts_and_health_returns_200(tmp_path) -> None:
     port = _free_port()
     env = os.environ.copy()
@@ -36,7 +31,7 @@ def test_serve_starts_and_health_returns_200(tmp_path) -> None:
     env["DUCKDB_PATH"] = str(tmp_path / "smoke.duckdb")
 
     proc = subprocess.Popen(
-        ["uv", "run", "thirteen-f", "serve", "--port", str(port)],
+        [sys.executable, "-m", "thirteen_f.cli", "serve", "--port", str(port)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=env,
@@ -60,8 +55,8 @@ def test_serve_starts_and_health_returns_200(tmp_path) -> None:
             time.sleep(0.5)
         pytest.fail(f"timed out waiting for {url} (last error: {last_err})")
     finally:
-        # Windows: terminate()는 최상위 uv.exe만 끝내고 thirteen-f.exe → python 손자 프로세스가
-        # 남아 포트와 .venv/Scripts/thirteen-f.exe를 계속 잡는다 (이후 uv sync 실패).
+        # Windows: terminate()는 최상위 프로세스만 끝낸다. venv의 python.exe는 실제 인터프리터를
+        # 자식으로 띄우는 런처라 그 자식이 남아 포트를 계속 잡는다.
         # 이 테스트가 띄운 프로세스 트리 전체를 taskkill /T로 종료한다.
         if proc.poll() is None:
             if sys.platform == "win32":
