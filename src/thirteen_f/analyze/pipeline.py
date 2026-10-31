@@ -31,8 +31,7 @@ def run_analyze(
         logger.info("continuity updated: %d rows", n_cont)
         n_cons = compute_consensus(conn)
         logger.info("consensus: %d rows", n_cons)
-        # manager_count는 None → compute_total_scores 내부에서 DB로부터 동적 derive
-        n_total = compute_total_scores(conn, weights, manager_count=None)
+        n_total = compute_total_scores(conn, weights)
         logger.info("total_scores: %d rows", n_total)
         return {
             "signals": n_signals,

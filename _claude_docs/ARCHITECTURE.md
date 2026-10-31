@@ -32,7 +32,7 @@ EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 �
 2. `conviction.update_conviction_scores` — 해당 매니저의 최대 비중 종목 대비 비중 (`min(1, weight / top_weight)`).
 3. `continuity.update_continuity_scores` — 최근 `WINDOW=4`분기 안에서 new/increase/hold가 끊기지 않고 이어진 분기 수 ÷ 4.
 4. `consensus.compute_consensus` — 분기×종목의 보유 거장 수, 신규매수 거장 수.
-5. `score.compute_total_scores` — consensus(보유 거장 수 ÷ 전체 거장 수), conviction 평균, continuity 평균, cloning_quality(`managers.cloning_score_weight` 평균)를 `scoring.toml` 가중치로 합산한다. `exit` 행은 제외.
+5. `score.compute_total_scores` — consensus(보유 거장 수 ÷ 그 분기에 유효 필링을 낸 거장 수), conviction 평균, continuity 평균, cloning_quality(`managers.cloning_score_weight` 평균)를 `scoring.toml` 가중치로 합산한다. `exit` 행은 제외.
 
 `concentration.py`(HHI)와 `cloning_quality.py`는 이 파이프라인에서 호출되지 않는다. HHI는 `_legacy_dashboard`만 쓰고 cloning_quality 계산은 `score.py` SQL에 인라인돼 있으므로, 점수 공식은 `score.py`에서 바꾼다.
 
