@@ -23,7 +23,6 @@
 - **보유 중인 종목의 가격이 어느 날짜에서 끊김** — 두 경우가 있다. ① 티커 변경: `cusip_ticker_map`은 캐시 미스만 OpenFIGI로 조회하므로(`fill_missing`) 옛 티커가 남아 가격 다운로드가 실패한다 (2026-09 확인: BK→BNY, EQR→VMRK, LC→HAPN, SATS→ECHO, VSCO→VSXY). 해당 CUSIP을 `cusip_mapper._openfigi_batch`로 다시 조회해 **새 티커가 있고 기존과 다를 때만** `upsert_mapping`으로 갱신한 뒤, 새 티커 가격을 `download_prices`로 받는다 (처음 보는 티커라 증분이 아니라 `start`부터 전체 기간을 받는다. 결과가 비었다고 기존 티커를 NULL로 덮으면 과거 보유 기록이 끊긴다). ② 상장폐지·인수 (예: AMWD, EA, GTLS, LBRDA·LBRDK): 조치할 것이 없다 — 백테스트는 마지막 가격을 유지해 수익률 0으로 처리한다. 점검 쿼리: 최근 분기 유효 holdings의 ticker 중 `MAX(prices.date)`가 SPY 마지막 날짜보다 10일 이상 이른 것.
 - **`No info table XML for <label>/<accession>` 경고** — 표지(`primary_doc.xml`)만 있고 information table이 없는 제출물이다 (정상). 2026-09-15 이전에는 파일명 탐지 버그로 Berkshire 전 분기와 Burry 2024년 제출 3건이 이 경고와 함께 누락됐다 — 그 시기의 DB 백업·백테스트 수치(`SingleManagerClone(Buffett)` CAGR 0% 등)는 이 버그의 결과다.
 - **`Skip NEW HOLDINGS amendment` 로그** — 추가 공개분만 담은 13F-HR/A라 적재하지 않은 것이다 (정상, Spec §5.2). 원본이 그 분기의 유효본으로 남는다.
-- **`config/analysis.toml`을 고쳐도 결과가 그대로** — 이 파일을 읽는 코드가 없다. 실제 조정 위치는 DATA_FORMATS.md `config/`.
 - **SPA 섹터가 전부 "Other", treemap 색이 단조로움** — `cusip_ticker_map.sector`가 비어 있다. `uv run python scripts/supplement_sector.py` 후 `export`.
 
 ## 백테스트
@@ -42,5 +41,5 @@
 - **`llm_summary.json` 요청이 404** — 이 파일을 만드는 exporter가 아직 없다 (`FRONTEND_PARITY.md`의 `LLM_SUMMARY` 행). frontend가 `{}`로 대체하므로 동작에는 영향이 없다.
 - **`/api/ask`가 429 또는 503** — 429는 IP당 분당 10회 제한이다. 카운터가 프로세스 메모리 dict라 `uvicorn --workers >1`이면 워커별로 따로 세므로 단일 워커를 전제한다. 503은 `GOOGLE_API_KEY` 미설정.
 - **Gemini 응답이 중간에 잘림** — thinking 모델(`gemini-3-flash-preview`)은 `max_output_tokens`를 thinking과 응답이 나눠 쓴다. `uv run python scripts/bench_llm.py`로 `finishReason`과 `thoughtsTokenCount`를 확인하고 한도를 올린다 (현재 `gemini.generate` 기본 8192, headline 4096, explain·chat 8192).
-- **`thirteen-f report`가 exit 2** — OS에 Quarto CLI가 없다. Windows는 `winget install RStudio.Quarto`.
+- **`thirteen-f report`가 exit 2** — 메시지로 구분한다. "Quarto CLI 미설치"면 OS에 Quarto가 없다 (Windows: `winget install RStudio.Quarto`). "Quarto 의존성 미설치"면 report extra(jupyter·plotly)가 없다 — `uv sync --extra report`.
 - **`thirteen-f dashboard` 명령이 없음** — Phase 5에서 제거됐다 (Spec §3.2와 plan `2026-05-21` Chunk 1·5에는 설계 당시 기록으로 남아 있음). `thirteen-f serve`를 쓴다.

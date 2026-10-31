@@ -26,7 +26,7 @@
 ```bash
 # 1) Python 환경 (uv 필요)
 uv venv
-uv sync
+uv sync --extra report   # report extra = Quarto 리포트용 jupyter·plotly (빼도 수집·분석·SPA는 동작)
 
 # 2) .env (SEC fair-access policy)
 cp .env.example .env
@@ -171,7 +171,7 @@ print(c.execute('''
 
 ## Tech Stack
 
-**Backend**: Python ≥ 3.11 / uv / httpx / lxml / duckdb / polars / pyyaml / typer / yfinance / rich / tenacity / pydantic v2 / fastapi + uvicorn (Phase 5) / plotly (Quarto 전용)
+**Backend**: Python ≥ 3.11 / uv / httpx / lxml / duckdb / pyyaml / typer / yfinance / rich / tenacity / pydantic v2 / fastapi + uvicorn (Phase 5) / jupyter·plotly (Quarto 전용 `report` extra)
 **Frontend**: React 18 + Babel-standalone (CDN) / Pretendard + JetBrains Mono / hash router SPA
 **Optional**: Quarto CLI (HTML 리포트) / Gemini API raw httpx (LLM 요약·해석·chat)
 

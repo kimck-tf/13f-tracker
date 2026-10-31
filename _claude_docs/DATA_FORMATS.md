@@ -50,7 +50,6 @@ gitignore 대상이며 `uv run thirteen-f export`로 다시 만든다. SPA는 `/
   - **CIK는 따옴표로 감싼 10자리 문자열로 쓴다.** PyYAML은 `cik: 0001061165`처럼 따옴표 없이 0~7 숫자로만 된 값을 8진수 int(287349)로 읽고, collect는 이런 값을 만나면 파일을 다시 쓰기 전에 `ValueError`로 멈춘다. 기존 항목 중 따옴표 없는 CIK는 8·9가 섞여 문자열로 읽히므로 `yaml.safe_dump`가 따옴표를 생략한 것이다.
   - collect는 실행할 때마다 이 파일을 `yaml.safe_dump`로 다시 쓴다 — 주석은 지워지고 키 순서는 유지된다. `cik`를 비워 두면 `company_tickers.json`으로 채우는데, 13F 전용 filer는 여기서 찾지 못하므로 직접 입력한다.
 - **`scoring.toml`** — `[weights]` consensus / conviction / continuity / cloning_quality, 합 1.0(±0.01).
-- **`analysis.toml`** — **읽는 코드가 없다.** 실제로 쓰이는 값은 diff threshold = `analyze --threshold`(기본 0.05), continuity 윈도우 = `analyze/continuity.py:WINDOW`(4), 컨센서스 최소 보유자 수 = 전략 생성자 인자(`ConsensusTopK(min_holders=…)` 등)다.
 
 ## 환경변수
 

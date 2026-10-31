@@ -93,7 +93,6 @@
 
 ## 수집 결과 보정 (전체 재수집 대신)
 
-- `scripts/supplement.py` — 슬래시 ticker 정규화 + 누락 ticker 가격 재다운로드용 일회성 스크립트. Nygren 처리 로직이 하드코딩돼 있으므로 실행 전에 코드를 읽고 필요한 부분만 쓴다.
 - `scripts/supplement_sector.py` — `cusip_ticker_map.sector/industry`를 yfinance로 채운다.
 
 완료: 보정 대상 행을 다시 조회해 누락이 줄었는지 `data/logs/failed_tickers*.jsonl`과 대조한다.

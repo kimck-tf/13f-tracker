@@ -185,6 +185,11 @@ def report(
             "Quarto CLI 미설치. Windows: winget install RStudio.Quarto", err=True
         )
         raise typer.Exit(2)
+    import importlib.util
+
+    if importlib.util.find_spec("plotly") is None or importlib.util.find_spec("jupyter") is None:
+        typer.echo("Quarto 의존성 미설치: uv sync --extra report", err=True)
+        raise typer.Exit(2)
 
     if not quarter and not latest:
         typer.echo("Either --quarter or --latest must be set", err=True)
