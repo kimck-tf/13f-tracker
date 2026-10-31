@@ -316,6 +316,7 @@ def test_export_backtest_writes_runs_with_holdings_and_metrics(conn, tmp_path: P
     assert run["run_id"] == "r1"
     assert run["name"] == "TestStrat"
     assert run["params"] == {"k": 1}
+    assert run["costBps"] == 10.0
     assert len(run["equity"]) == 2  # 2 quarters
     assert run["metrics"]["cagr"] == pytest.approx(0.12)
     assert run["metrics"]["hitRate"] == pytest.approx(0.66)

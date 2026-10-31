@@ -58,7 +58,7 @@ EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 �
 - **SPA** (`web/static/`): 빌드 단계가 없다. `index.html`이 CDN에서 React 18 UMD와 Babel standalone을 받고 `hf-data.js` → `tweaks-panel.jsx` → `hf-components.jsx` → 화면별 `.jsx` → `hf-app.jsx`(hash router, 기본 `#/home`) 순서로 로드한다. 파일끼리는 각 파일 끝 `Object.assign(window, {...})`로 노출한 전역을 쓴다.
   - `hf-data.js:bootstrapFromJson`이 JSON 9개를 `Promise.all`로 받아 전역(`META`, `QUARTERS`, `STOCKS`, `MANAGERS`, `HOLDINGS`, `HOLDINGS_UNMAPPED`, `BACKTESTS`, `LLM_SUMMARY`, `TARGETS`)을 채운다. 일봉은 `fetchDailyPx(ticker)`로 필요할 때만 받는다.
   - Plan 화면(`hf-plan.jsx`, `#/plan`)은 `TARGETS`만 읽어 알고리즘 선정 표(최신 run 지표, 권장 배지) → 선택 전략의 실행 계획(목표 비중, buy/keep/sell, 다음 리밸런스일) → 주의사항(GOOG+GOOGL 동일 회사, ETF 포함)을 표시한다. `targets.json`이 없으면 export 안내만 낸다.
-  - Backtest 화면(`hf-backtest.jsx:matchBackendRun`)은 `BACKTESTS`에서 `name`이 전략 type으로 시작하는 첫 run(=최신)을 쓴다. `SingleManagerClone`은 매니저 전체 이름의 마지막 단어가 `(…)` 안에 있어야 매칭된다. 못 찾으면 `hf-data.js:runStrategy` 브라우저 시뮬레이션(SIM 배지, KPI 비교 제외)으로 대신한다.
+  - Backtest 화면(`hf-backtest.jsx`)은 `BACKTESTS`에서 전략 이름(`name`)별 첫 run(=최신)을 하나씩 칩으로 보여 준다. 브라우저 시뮬레이션은 없다 (2026-10-31 삭제). backend equity·benchEquity는 NAV 금액이라 화면에서 전략의 초기 NAV로 나눠 시작 1.00×로 그린다.
 
 ## llm (Phase 4+ / 5)
 

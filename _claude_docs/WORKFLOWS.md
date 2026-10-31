@@ -20,9 +20,9 @@
    - 모든 SQL에 `filings.filed_at <= as_of_date`. `holdings`를 직접 읽으면 `superseded_by IS NULL`, `form_type LIKE '13F-HR%'`도 붙인다 (`single_manager.py`, `multi_manager.py` 참고). `total_scores`·`consensus_quarterly`를 읽으면 분기는 `strategy.latest_public_period`로 고른다 (`score_top_k.py` 참고).
    - `ticker IS NOT NULL`, 비중 합 1.0, 파라미터를 담은 `name`, `params_json` 오버라이드.
 3. `runner.default_suite()`에 등록한다. `--strategy`로도 돌리려면 `cli.py` backtest 명령의 registry에도 추가한다.
-4. SPA에 보이게 하려면 `web/static/hf-data.js`의 `STRATEGY_TYPES`에 type을 추가한다. `matchBackendRun`이 type으로 시작하는 첫 run을 쓰므로 suite에는 type당 전략을 1개만 둔다 — 같은 type이 둘이면 최신 run 하나만 화면에 나온다. 예외로 `SingleManagerClone`은 매니저 이름의 마지막 단어(`(Buffett)`, `(Druckenmiller)`)로 구분되므로 매니저별로 여러 개 둘 수 있다.
+4. Backtest 화면은 `BACKTESTS`의 전략 이름(`name`)별 최신 run을 칩으로 보여 주므로, `backtest --all`에 들어가면 따로 할 일이 없다. 이름이 같으면 최신 run 하나만 나오므로 suite에는 이름이 겹치지 않게 둔다. 칩 툴팁 설명은 `web/static/hf-data.js`의 `STRATEGY_TYPES`(type·name·desc·color)에서 온다.
 
-완료: `uv run pytest tests/unit` 통과, `backtest --all` 출력에 새 전략 행이 있고, `export` 후 Backtest 화면에서 SIM 배지 없이 표시된다.
+완료: `uv run pytest tests/unit` 통과, `backtest --all` 출력에 새 전략 행이 있고, `export` 후 Backtest 화면에 새 전략 칩이 보인다.
 
 파라미터 비교는 `uv run python scripts/sweep_backtests.py`로 한다 — DB 사본(`data/sweep/`)에서 돌리므로 본 DB와 SPA 데이터에 run이 쌓이지 않는다. 설정 목록은 스크립트의 `build_configs`, 결과는 `data/sweep/sweep_results.csv`(전 구간·전반·후반 지표).
 

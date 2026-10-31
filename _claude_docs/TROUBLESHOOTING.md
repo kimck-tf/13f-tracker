@@ -39,7 +39,6 @@
 ## 웹·LLM
 
 - **SPA가 빈 화면** — `index.html`이 React·Babel(unpkg)과 폰트(Google Fonts, jsdelivr)를 CDN에서 받으므로 인터넷 연결이 필요하다. JSON이 없으면 ErrorScreen에 누락 파일명과 HTTP 상태가 표시된다 → `uv run thirteen-f export`.
-- **Backtest 화면에 `SIM` 배지** — 해당 전략의 backend run을 `BACKTESTS`에서 찾지 못해 `hf-data.js:runStrategy` 브라우저 시뮬레이션으로 대신한 것이다 (KPI 비교에서 제외). `backtest --all` → `export` 후 새로고침.
 - **`llm_summary.json` 요청이 404** — 이 파일을 만드는 exporter가 아직 없다 (`FRONTEND_PARITY.md`의 `LLM_SUMMARY` 행). frontend가 `{}`로 대체하므로 동작에는 영향이 없다.
 - **`/api/ask`가 429 또는 503** — 429는 IP당 분당 10회 제한이다. 카운터가 프로세스 메모리 dict라 `uvicorn --workers >1`이면 워커별로 따로 세므로 단일 워커를 전제한다. 503은 `GOOGLE_API_KEY` 미설정.
 - **Gemini 응답이 중간에 잘림** — thinking 모델(`gemini-3-flash-preview`)은 `max_output_tokens`를 thinking과 응답이 나눠 쓴다. `uv run python scripts/bench_llm.py`로 `finishReason`과 `thoughtsTokenCount`를 확인하고 한도를 올린다 (현재 `gemini.generate` 기본 8192, headline 4096, explain·chat 8192).

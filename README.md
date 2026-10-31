@@ -6,7 +6,7 @@
 
 - **수집**: SEC EDGAR에서 분기별 13F-HR 공시 직접 파싱 (httpx + lxml)
 - **분석**: 분기 간 변화·conviction·continuity·consensus 4 시그널 + 가중 종합 점수
-- **백테스트**: 7종 전략 8개 구성 (SingleManagerClone(Buffett·Druckenmiller) / ConsensusTopK / ScoreTopK / ConvictionFollow / NewBuyOnly / Ensemble / **MultiManager**) + Lookahead-safe 검증 + 분기 holdings snapshot
+- **백테스트**: 7종 전략 8개 구성 (SingleManagerClone(Buffett·Druckenmiller) / ConsensusTopK / ScoreTopK / ConvictionFollow / NewBuyOnly / Ensemble / **MultiManager**) + Lookahead-safe 검증 + 분기 holdings snapshot. Backtest 화면은 `backtest --all`이 남긴 backend run만 표시한다
 - **시각화**: 10페이지 정적 SPA (Home / Managers / Compare / Stocks / Changes / Consensus / Backtest / **Plan** / Builder / Ask) — React 18 + Pretendard, FastAPI 정적 서버. Plan은 백테스트 비교 → 권장 전략 → 지금의 목표 비중·매수/매도 목록
 - **리포트**: Quarto 6 챕터 단일 HTML (선택: Gemini LLM 분기 헤드라인 요약 + Top 10 시그널 해석)
 - **Ask LLM**: `/api/ask` 엔드포인트 (Gemini chat with structured cards, per-IP rate limit 10/min, prompt injection 방어)

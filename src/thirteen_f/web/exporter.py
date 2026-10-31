@@ -311,7 +311,7 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
     """Export ``backtest.json`` — list of run records with equity/dd/qrets/holdingsLog/metrics."""
     runs = conn.execute(
         """
-        SELECT r.run_id, r.strategy_name, r.params_json, r.start_date, r.end_date,
+        SELECT r.run_id, r.strategy_name, r.params_json, r.start_date, r.end_date, r.cost_bps,
                m.total_return, m.cagr, m.sharpe, m.sortino, m.mdd, m.calmar,
                m.win_rate_quarterly, m.bench_total_return, m.bench_cagr
         FROM backtest_runs r
@@ -322,7 +322,7 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
 
     payload: list[dict] = []
     for (
-        run_id, name, params_json, _sd, _ed,
+        run_id, name, params_json, _sd, _ed, cost_bps,
         total_ret, m_cagr, m_sharpe, m_sortino, m_mdd, m_calmar,
         m_winq, m_bench_total, m_bench_cagr,
     ) in runs:
@@ -348,6 +348,7 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
             "run_id": run_id,
             "name": name,
             "params": json.loads(params_json) if params_json else {},
+            "costBps": cost_bps,
             "equity": equity,
             "dd": dd,
             "qrets": qrets,
