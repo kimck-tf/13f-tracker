@@ -54,4 +54,5 @@ def update_continuity_scores(conn: duckdb.DuckDBPyConnection) -> int:
         WHERE s.cik = w.cik AND s.cusip = w.cusip AND s.period_of_report = w.period_of_report
         """
     )
-    return conn.execute("SELECT COUNT(*) FROM signals_quarterly").fetchone()[0]
+    row = conn.execute("SELECT COUNT(*) FROM signals_quarterly").fetchone()
+    return int(row[0]) if row else 0
