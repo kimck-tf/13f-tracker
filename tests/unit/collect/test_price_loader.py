@@ -81,6 +81,8 @@ def _fake(monkeypatch, frames):
         return frames.pop(0)
 
     monkeypatch.setattr(price_loader, "_yfinance_download", fake)
+    # 배치 경로는 비워 둔다 — 실제 yfinance가 네트워크로 받아 와 단일 경로 fake를 건너뛰지 않게
+    monkeypatch.setattr(price_loader, "_yf_batch", lambda tickers, start: {}, raising=False)
     return calls
 
 
@@ -132,3 +134,24 @@ def test_download_prices_uses_start_for_unknown_ticker(conn, monkeypatch):
     calls = _fake(monkeypatch, [_frame(date(2024, 1, 2), 3)])
     download_prices(conn, ["NEW"], start=date(2024, 1, 1))
     assert calls == [("NEW", date(2024, 1, 1))]
+
+
+def test_download_prices_batches_tickers_with_the_same_start(conn, monkeypatch):
+    batch_calls = []
+
+    def fake_batch(tickers, start):
+        batch_calls.append((tuple(tickers), start))
+        return {t: _frame(date(2024, 1, 2), 3) for t in tickers if t != "MISSING"}
+
+    single_calls = []
+
+    def fake_single(ticker, start):
+        single_calls.append((ticker, start))
+        return _frame(date(2024, 1, 2), 3)
+
+    monkeypatch.setattr(price_loader, "_yf_batch", fake_batch)
+    monkeypatch.setattr(price_loader, "_yfinance_download", fake_single)
+    download_prices(conn, ["AAA", "BBB", "MISSING"], start=date(2024, 1, 1))
+    assert batch_calls == [(("AAA", "BBB", "MISSING"), date(2024, 1, 1))]
+    assert single_calls == [("MISSING", date(2024, 1, 1))]  # 배치에 빠진 종목만 단일 경로
+    assert conn.execute("SELECT COUNT(DISTINCT ticker) FROM prices").fetchone()[0] == 3

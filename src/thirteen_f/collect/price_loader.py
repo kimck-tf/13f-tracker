@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 OVERLAP_DAYS = 10  # 증분 다운로드 때 마지막 저장일보다 이만큼 앞에서부터 받아 겹치는 구간을 만든다
 ADJ_TOLERANCE = 1e-4  # 겹치는 날의 값이 이 비율 안에서 같으면 같은 값으로 본다
+BATCH_SIZE = 50  # yfinance 한 번에 받는 ticker 수
 
 
 def to_stooq_ticker(yf_ticker: str) -> str:
@@ -136,6 +137,39 @@ def _last_price_dates(conn: duckdb.DuckDBPyConnection) -> dict[str, date]:
     return dict(conn.execute("SELECT ticker, MAX(date) FROM prices GROUP BY ticker").fetchall())
 
 
+def _yf_batch(tickers: list[str], start: date) -> dict[str, pd.DataFrame]:
+    """yfinance 한 번의 요청으로 여러 ticker를 받아 ticker별 단일 레벨 컬럼 DataFrame으로 나눈다.
+
+    값이 전부 NaN인 ticker(조회 실패·상장 전)는 빼고, 요청 자체가 실패하면 빈 dict를 돌려준다 —
+    빠진 ticker는 호출자가 단일 경로(`_fetch`)로 다시 받는다.
+    """
+    try:
+        import yfinance as yf
+
+        df = yf.download(
+            tickers,
+            start=start.isoformat(),
+            group_by="ticker",
+            auto_adjust=False,
+            threads=True,
+            progress=False,
+        )
+    except Exception as e:
+        logger.warning("yfinance batch failed for %d tickers: %s", len(tickers), e)
+        return {}
+    if df is None or df.empty or not isinstance(df.columns, pd.MultiIndex):
+        return {}
+    out: dict[str, pd.DataFrame] = {}
+    present = set(df.columns.get_level_values(0))
+    for t in tickers:
+        if t not in present:
+            continue
+        sub = df[t].dropna(how="all")
+        if not sub.empty:
+            out[t] = sub
+    return out
+
+
 def _fetch(ticker: str, start: date) -> pd.DataFrame | None:
     """yfinance, 비어 있으면 Stooq. 둘 다 비면 None."""
     df = _yfinance_download(ticker, start)
@@ -185,14 +219,30 @@ def download_prices(
     이미 가격이 있는 ticker는 마지막 저장일 `OVERLAP_DAYS`일 전부터만 받는다. 겹치는 날의
     수정 종가가 상수 배율로 달라졌으면(배당·분할의 소급 조정) 그 전 이력을 같은 배율로
     재스케일하고, 배율이 날마다 다르면(데이터 정정) `start`부터 전체를 다시 받는다.
+    yfinance 요청은 fetch 시작일이 같은 ticker끼리 `BATCH_SIZE`개씩 묶어 보내고, 배치 결과에 없는
+    ticker만 단일 경로(yfinance → Stooq)로 다시 받는다.
     Tickers with no data after both yfinance and Stooq are appended to failure_log.
     """
     results: dict[str, int] = {}
     failed: list[str] = []
     last_dates = _last_price_dates(conn)
-    for t in sorted(set(t for t in tickers if t)):
+    todo = sorted(set(t for t in tickers if t))
+    fetch_start = {
+        t: start if last_dates.get(t) is None else last_dates[t] - timedelta(days=OVERLAP_DAYS)
+        for t in todo
+    }
+    by_start: dict[date, list[str]] = {}
+    for t in todo:
+        by_start.setdefault(fetch_start[t], []).append(t)
+    batched: dict[str, pd.DataFrame] = {}
+    for s, group in by_start.items():
+        for i in range(0, len(group), BATCH_SIZE):
+            batched.update(_yf_batch(group[i:i + BATCH_SIZE], s))
+    for t in todo:
         last = last_dates.get(t)
-        df = _fetch(t, start if last is None else last - timedelta(days=OVERLAP_DAYS))
+        df = batched.get(t)
+        if df is None:
+            df = _fetch(t, fetch_start[t])
         if df is not None and last is not None:
             pairs = _overlap_pairs(conn, t, df)
             if pairs:
