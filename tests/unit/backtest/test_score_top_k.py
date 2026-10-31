@@ -169,3 +169,40 @@ def test_new_buy_only_merges_classes_and_excludes_etfs(conn):
         "LBRDK" in t and "LBRDA" not in t
     )  # 발행사 신규매수 수 = max(2, 1) = 2 → 대표 클래스는 total_score 높은 LBRDK
     assert set(t) == {"AAPL", "LBRDK"}  # AAPL new_buy 2, MSFT 1은 탈락
+
+
+def _add_hertz(conn):
+    """발행사 42806J: 보통주 HTZ(보유 2명, 점수 0.30)와 워런트 HTZWW(1명, 0.41)."""
+    rows = [
+        ("42806J700", "HTZ", 0.30, 2, 1, "COM NEW"),
+        ("42806J114", "HTZWW", 0.41, 1, 2, "*W EXP 06/30/205"),
+    ]
+    for cusip, ticker, score, holders, new_buys, title in rows:
+        conn.execute(
+            "INSERT INTO cusip_ticker_map (cusip, ticker, is_etf) VALUES (?, ?, FALSE)",
+            (cusip, ticker),
+        )
+        conn.execute(
+            "INSERT INTO total_scores VALUES (DATE '2024-03-31', ?, ?, 1.0, 1.0, 1.0, 1.0, ?)",
+            (cusip, ticker, score),
+        )
+        conn.execute(
+            "INSERT INTO consensus_quarterly VALUES (DATE '2024-03-31', ?, ?, ?, ?, 'c1,c2', 0.5)",
+            (cusip, ticker, holders, new_buys),
+        )
+        conn.execute(
+            "INSERT INTO holdings VALUES ('acc1', ?, 'HERTZ', ?, 100, 10, 'SH', '')",
+            (cusip, title),
+        )
+
+
+def test_aggregate_strategies_prefer_common_stock_over_warrants(conn):
+    """발행사당 한 클래스를 고를 때 워런트(13F 표기 '*W EXP …')는 점수가 높아도 보통주 뒤로."""
+    _add_hertz(conn)
+    d = date(2024, 6, 1)
+    for t in (
+        ConsensusTopK(min_holders=2, top_k=10).get_target_positions(d, conn),
+        ScoreTopK(top_k=10).get_target_positions(d, conn),
+        NewBuyOnly(min_holders=2, top_k=15).get_target_positions(d, conn),
+    ):
+        assert "HTZ" in t and "HTZWW" not in t

@@ -150,3 +150,26 @@ def test_no_zero_share_rows_after_an_exit(conn):
     upsert_holdings(conn, "m1q4", [_h("BBB", 60), _h("CCC", 10)])
     compute_signals_quarterly(conn)
     assert _types(conn, "m1", "AAA") == {Q1: "new", Q2: "hold", Q3: "exit"}
+
+
+def test_put_options_are_not_long_holdings(conn):
+    """풋옵션은 보유가 아니다 — 풋만 있는 종목은 시그널이 없고, 같은 종목 보통주에 더하지도 않는다
+    (복제 전략의 single_manager.py와 같은 기준). 콜은 그대로 합산한다."""
+    _filing(conn, "m2q3", "m2", Q3)
+    upsert_holdings(
+        conn,
+        "m2q3",
+        [
+            _h("AAA", 10),
+            {**_h("AAA", 500), "put_call": "PUT"},
+            {**_h("PPP", 1000), "put_call": "PUT"},
+        ],
+    )
+    compute_signals_quarterly(conn)
+    assert _types(conn, "m2", "PPP") == {}
+    row = conn.execute(
+        "SELECT change_type, shares_change, weight_pct FROM signals_quarterly "
+        "WHERE cik = 'm2' AND cusip = 'AAA' AND period_of_report = ?",
+        (Q3,),
+    ).fetchone()
+    assert row == ("hold", 0, 1.0)  # Q1 10주 → Q3 10주, 풋 금액은 포트폴리오 합계에도 없다

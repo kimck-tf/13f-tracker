@@ -228,3 +228,33 @@ def test_multi_manager_excludes_etfs_and_sums_share_classes(conn):
     # AAPL 1800, Liberty 700+600=1300(대표 LBRDA), KO 1200 → top 2 = AAPL, LBRDA. SPY 5000은 제외
     assert set(t) == {"AAPL", "LBRDA"}
     assert t["LBRDA"] == pytest.approx(1300 / 3100)
+
+
+def test_multi_manager_ignores_put_options(conn):
+    """풋만 보유한 종목(Burry의 PLTR 풋)을 롱으로 사면 안 된다 — 보통주 0주."""
+    upsert_holdings(conn, "a1", [
+        {"cusip": "AAA", "name_of_issuer": "Apple", "title_of_class": "COM",
+         "value_usd": 1000, "shares": 10, "share_type": "SH", "put_call": ""},
+        {"cusip": "BBB", "name_of_issuer": "Boeing", "title_of_class": "COM",
+         "value_usd": 5000, "shares": 50, "share_type": "SH", "put_call": "Put"},
+    ])
+    targets = MultiManager(mgr_labels=["M1"], top_k=5).get_target_positions(date(2024, 9, 1), conn)
+    assert set(targets) == {"AAPL"}
+
+
+def test_multi_manager_prefers_common_stock_over_warrants(conn):
+    """같은 발행사 금액은 합치되, 대표 티커는 워런트('*W EXP …')가 아니라 보통주."""
+    conn.executemany(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, is_etf) VALUES (?, ?, FALSE)",
+        [("42806J114", "HTZWW"), ("42806J700", "HTZ")],
+    )
+    upsert_holdings(conn, "a1", [
+        {"cusip": "42806J114", "name_of_issuer": "Hertz", "title_of_class": "*W EXP 06/30/205",
+         "value_usd": 900, "shares": 90, "share_type": "SH", "put_call": ""},
+        {"cusip": "42806J700", "name_of_issuer": "Hertz", "title_of_class": "COM NEW",
+         "value_usd": 100, "shares": 10, "share_type": "SH", "put_call": ""},
+    ])
+    targets = MultiManager(mgr_labels=["M1"], top_k=5, weighting="byvalue").get_target_positions(
+        date(2024, 9, 1), conn
+    )
+    assert targets == {"HTZ": pytest.approx(1.0)}

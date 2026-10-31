@@ -48,9 +48,10 @@ def compute_signals_quarterly(
             FROM holdings h
             JOIN filings f ON h.accession_no = f.accession_no
             WHERE f.superseded_by IS NULL
+              AND UPPER(h.put_call) <> 'PUT'  -- 풋은 보유가 아니다 (복제 전략과 같은 기준)
         ),
         agg_per_filing AS (
-            -- 같은 (filing, cusip)의 옵션/일반주가 여러 줄일 수 있으므로 합산
+            -- 같은 (filing, cusip)의 콜/일반주가 여러 줄일 수 있으므로 합산
             SELECT cik, period_of_report, cusip,
                    SUM(shares) AS shares,
                    SUM(value_usd) AS value_usd

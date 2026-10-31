@@ -108,3 +108,54 @@ def test_conviction_follow_prefers_the_mapped_class_of_an_issuer(empty_conn):
     )
     t = ConvictionFollow(top_k=2).get_target_positions(date(2024, 6, 1), c)
     assert set(t) == {"LBRDA", "AAPL"}
+
+
+def _conviction_db(c, signals):
+    """signals: (cik, cusip, conviction). 매니저·필링은 cik마다 하나씩 만든다."""
+    for cik in sorted({cik for cik, _, _ in signals}):
+        c.execute("INSERT INTO managers (cik, name) VALUES (?, ?)", [cik, cik])
+        c.execute(
+            "INSERT INTO filings VALUES "
+            "(?, ?, '13F-HR', DATE '2024-03-31', DATE '2024-05-15', FALSE, NULL)",
+            [f"a-{cik}", cik],
+        )
+    c.executemany(
+        "INSERT INTO signals_quarterly "
+        "(cik, cusip, period_of_report, change_type, weight_pct, conviction_score) "
+        "VALUES (?, ?, DATE '2024-03-31', 'hold', 0.1, ?)",
+        signals,
+    )
+
+
+def test_conviction_follow_keeps_one_class_per_issuer_across_managers(empty_conn):
+    """거장마다 고른 클래스가 달라도(c1 GOOGL, c2 GOOG) 포트폴리오에는 발행사당 한 클래스 —
+    conviction 합이 큰 GOOGL이 대표이고 비중은 두 거장 합계다."""
+    c = empty_conn
+    c.executemany(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, is_etf) VALUES (?, ?, FALSE)",
+        [("02079K305", "GOOGL"), ("02079K107", "GOOG"), ("037833100", "AAPL")],
+    )
+    _conviction_db(
+        c, [("c1", "02079K305", 0.9), ("c1", "037833100", 0.7), ("c2", "02079K107", 0.8)]
+    )
+    t = ConvictionFollow(top_k=2).get_target_positions(date(2024, 6, 1), c)
+    assert set(t) == {"GOOGL", "AAPL"}
+    assert t["GOOGL"] == pytest.approx((0.9 + 0.8) / (0.9 + 0.8 + 0.7))
+
+
+def test_conviction_follow_prefers_common_stock_over_warrants(empty_conn):
+    """같은 발행사(42806J)의 워런트(13F 표기 '*W EXP …')는 conviction이 높아도 보통주 뒤로."""
+    c = empty_conn
+    c.executemany(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, is_etf) VALUES (?, ?, FALSE)",
+        [("42806J114", "HTZWW"), ("42806J700", "HTZ"), ("037833100", "AAPL")],
+    )
+    _conviction_db(
+        c, [("c1", "42806J114", 0.9), ("c1", "42806J700", 0.5), ("c1", "037833100", 0.7)]
+    )
+    c.executemany(
+        "INSERT INTO holdings VALUES ('a-c1', ?, 'HERTZ', ?, 100, 10, 'SH', '')",
+        [("42806J114", "*W EXP 06/30/205"), ("42806J700", "COM NEW")],
+    )
+    t = ConvictionFollow(top_k=2).get_target_positions(date(2024, 6, 1), c)
+    assert set(t) == {"HTZ", "AAPL"}

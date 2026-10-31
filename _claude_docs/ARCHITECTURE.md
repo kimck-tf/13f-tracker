@@ -30,7 +30,7 @@ EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 �
 
 `analyze/pipeline.py` 호출 순서 (정확한 공식은 Spec §6.1):
 
-1. `diff.compute_signals_quarterly` — 매니저×종목×분기 `change_type` ∈ `new`/`increase`/`hold`/`decrease`/`exit`. 주식 수 변화율이 ±`--threshold`(기본 0.05) 이내면 `hold`. 비교 대상은 holdings가 있는 직전 제출 분기다. 전량 매도한 종목은 다음 제출 분기에 `exit` 행(0주)으로 남고, 공백 뒤 재진입은 `new`다.
+1. `diff.compute_signals_quarterly` — 매니저×종목×분기 `change_type` ∈ `new`/`increase`/`hold`/`decrease`/`exit`. 주식 수 변화율이 ±`--threshold`(기본 0.05) 이내면 `hold`. 비교 대상은 holdings가 있는 직전 제출 분기다. 전량 매도한 종목은 다음 제출 분기에 `exit` 행(0주)으로 남고, 공백 뒤 재진입은 `new`다. 풋옵션 행은 보유로 세지 않는다(콜은 기초자산 주식 수로 합산).
 2. `conviction.update_conviction_scores` — 해당 매니저의 최대 비중 종목 대비 비중 (`min(1, weight / top_weight)`).
 3. `continuity.update_continuity_scores` — 최근 `WINDOW=4`분기 안에서 new/increase/hold가 끊기지 않고 이어진 분기 수 ÷ 4.
 4. `consensus.compute_consensus` — 분기×종목의 보유 거장 수, 신규매수 거장 수.
@@ -41,7 +41,7 @@ EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 �
 ## backtest (Phase 3)
 
 - **Strategy 계약** (`backtest/strategy.py`): `get_target_positions(as_of_date, conn) -> {ticker: weight}`. 비중 합 1.0, `ticker IS NULL` 제외, SQL에 lookahead 가드. `name`에 파라미터를 넣는다(예: `ScoreTopK(20)`) — `backtest_runs.strategy_name`과 SPA 매칭 키로 쓰인다.
-- **집계 전략의 종목 단위** (`consensus_top_k`·`score_top_k`·`new_buy_only`·`conviction_follow`·`multi_manager`): `cusip_ticker_map.is_etf` 종목을 빼고 발행사(CUSIP 앞 6자리)마다 한 클래스만 남긴다. 대표 클래스는 ConsensusTopK·ScoreTopK·NewBuyOnly가 `total_score` 최고, ConvictionFollow가 거장별 `conviction_score` 최고, MultiManager가 금액이 가장 큰 클래스(금액은 클래스 합산)다. 보유자 수·신규매수 수 문턱은 클래스 중 최대값으로 본다. 두 규칙은 `ROW_NUMBER`·`LIMIT` 전에 적용하고, 복제(`SingleManagerClone`)에는 적용하지 않는다.
+- **집계 전략의 종목 단위** (`consensus_top_k`·`score_top_k`·`new_buy_only`·`conviction_follow`·`multi_manager`): `cusip_ticker_map.is_etf` 종목을 빼고 발행사(CUSIP 앞 6자리)마다 한 클래스만 남긴다. 대표 클래스는 어느 전략이든 보통주가 먼저다 — 13F `titleOfClass`가 `*W EXP …`(워런트)·warrant·right인 클래스(`strategy.NON_COMMON_CUSIPS_SQL`)는 뒤로 미룬다. 그다음 기준은 ConsensusTopK·ScoreTopK·NewBuyOnly가 `total_score` 최고, ConvictionFollow가 거장별 `conviction_score` 최고(그 뒤 거장 사이에서 발행사별로 다시 합쳐 conviction 합이 큰 클래스), MultiManager가 금액이 가장 큰 클래스(금액은 클래스 합산)다. 풋옵션 행은 MultiManager 금액에 넣지 않는다. 보유자 수·신규매수 수 문턱은 클래스 중 최대값으로 본다. 두 규칙은 `ROW_NUMBER`·`LIMIT` 전에 적용하고, 복제(`SingleManagerClone`)에는 적용하지 않는다.
 - **엔진** (`engine.run_backtest`): 벤치마크(SPY) 가격이 있는 날만 영업일로 순회하므로 `--start`/`--end`는 SPY 가격 범위로 잘린다. 매 영업일 전략을 호출해 target이 바뀐 날만 리밸런싱하고 turnover × `cost_bps`(편도)를 차감한다(첫 진입 포함). 그날 가격이 없는 종목은 직전 가격으로 채워 수익률 0으로 둔다. 다만 그날까지의 마지막 가격이 `STALE_DAYS`(10 달력일)보다 오래됐거나 가격이 아예 없는 종목은 target에서 빼고 남은 종목에 원래 비중 합을 다시 나눈다 (상장폐지·인수, `_drop_stale`). 보유에서 빠진 종목의 직전 가격은 그날 버리므로, 다시 산 날은 처음 사는 날처럼 그날 수익을 받지 않는다. 분기 첫 영업일 비중을 `holdings_log` → `backtest_holdings`에 저장한다.
 - **복제 전략의 옵션 처리** (`strategies/single_manager.py`): 최신 제출물의 행을 ticker별로 합산해 금액 비율로 비중을 매긴다. 콜옵션은 기초자산 명목금액의 롱 노출로 포함하고, 풋은 롱 노출이 아니므로 제외한다. 금액 단위가 틀린 제출자(Druckenmiller)도 제출물 안 상대 비중이라 영향이 없다.
 - **기본 suite** (`runner.default_suite`, 8개): `SingleManagerClone(Buffett)`, `SingleManagerClone(Druckenmiller)`, `ConsensusTopK(3,10)`, `ScoreTopK(40)`, `ConvictionFollow(3)`, `NewBuyOnly(2,15)`, `Ensemble`(ConsensusTopK(3,10) 0.5 / ConsensusTopK(2,15) 0.5), `MultiManager`(Burry·Dalio·Druckenmiller·Tepper, top 20). 파라미터는 2026-09 탐색(`docs/backtest-optimization-2026-09.md`)의 계열별 최적값이고, `cli.py` registry와 SPA `hf-data.js:STRATEGY_TYPES`의 기본값도 같게 맞춘다. 집계 테이블을 읽는 전략은 분기를 `strategy.latest_public_period`로 고른다(매니저 전원 제출 뒤).

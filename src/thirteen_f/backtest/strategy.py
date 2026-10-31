@@ -7,6 +7,13 @@ from datetime import date
 
 import duckdb
 
+# 보통주가 아닌 클래스(워런트·권리)의 CUSIP. 13F titleOfClass는 SEC 공식 목록 표기(`*W EXP …`)를
+# 따른다. 집계 전략이 발행사(CUSIP 앞 6자리)당 한 클래스를 고를 때 이런 클래스는 보통주 뒤로 미룬다.
+NON_COMMON_CUSIPS_SQL = (
+    "SELECT DISTINCT cusip FROM holdings WHERE title_of_class LIKE '*%' "
+    "OR UPPER(title_of_class) LIKE '%WARRANT%' OR UPPER(title_of_class) LIKE '%RIGHT%'"
+)
+
 
 def latest_public_period(
     conn: duckdb.DuckDBPyConnection, as_of_date: date, table: str
