@@ -14,7 +14,7 @@ import duckdb
 
 from thirteen_f.backtest.runner import default_suite
 from thirteen_f.backtest.strategy import latest_public_period
-from thirteen_f.core.dates import parse_quarter, quarter_end, quarter_label
+from thirteen_f.core.dates import parse_quarter, quarter_end, quarter_label, sec_13f_deadline
 
 from .schemas import Manager, Meta, QuarterEntry
 
@@ -388,13 +388,10 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
 
 
 def _next_rebalance(period: date) -> date:
-    """다음 분기말 + 45일(13F 법정 기한). 주말이면 다음 월요일 — 공휴일은 보지 않는 예상값."""
+    """다음 분기 13F의 제출 기한 (분기말 + 45일, 주말·연방 공휴일이면 다음 영업일)."""
     year, q = parse_quarter(quarter_label(period))
     year, q = (year + 1, 1) if q == 4 else (year, q + 1)
-    deadline = quarter_end(f"{year}Q{q}") + timedelta(days=45)
-    while deadline.weekday() >= 5:
-        deadline += timedelta(days=1)
-    return deadline
+    return sec_13f_deadline(quarter_end(f"{year}Q{q}"))
 
 
 def _latest_run_metrics(conn: duckdb.DuckDBPyConnection) -> dict[str, dict]:

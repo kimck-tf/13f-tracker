@@ -89,7 +89,7 @@ function PlanScreen({ route }) {
         </div>
         <div className="dash-kpis">
           <Stat label="DATA QUARTER" value={periodLabel} sub={selected.public_since ? `공개 ${selected.public_since}` : "13F 없음"} />
-          <Stat label="NEXT REBALANCE" value={selected.next_rebalance || "—"} sub="분기말 + 45일 (예상)" accent />
+          <Stat label="NEXT REBALANCE" value={selected.next_rebalance || "—"} sub="분기말 + 45일, 주말·연방 공휴일 다음 영업일" accent />
           <Stat label="TARGET NAMES" value={selected.positions.length} sub="동일가중 목표" />
           <Stat label="BUY" value={buys.length} sub="직전 목록에 없던 종목" />
           <Stat label="KEEP" value={selected.positions.length - buys.length} sub="직전 목록에도 있던 종목" />

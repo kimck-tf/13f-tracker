@@ -152,3 +152,5 @@ def test_next_rebalance_rolls_weekend_deadline_to_monday():
     # 2026-09-30 + 45일 = 2026-11-14(토) → 11-16(월)
     assert _next_rebalance(date(2026, 6, 30)) == date(2026, 11, 16)
     assert _next_rebalance(date(2024, 6, 30)) == date(2024, 11, 14)
+    # 2025-12-31 + 45일 = 2026-02-14(토) → 02-16(월)은 Presidents' Day → 02-17(화)
+    assert _next_rebalance(date(2025, 9, 30)) == date(2026, 2, 17)

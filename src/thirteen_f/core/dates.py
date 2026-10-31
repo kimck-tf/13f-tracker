@@ -1,7 +1,7 @@
 """Quarter ↔ date 변환 유틸리티."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 _QUARTER_LAST_MONTH = {1: 3, 2: 6, 3: 9, 4: 12}
 _QUARTER_LAST_DAY = {1: 31, 2: 30, 3: 30, 4: 31}
@@ -43,3 +43,41 @@ def quarter_range(start: str, end: str) -> list[str]:
         if q == 5:
             y, q = y + 1, 1
     return out
+
+
+
+def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
+    """그 달의 n번째 weekday(월요일 = 0)."""
+    first = date(year, month, 1)
+    return first + timedelta(days=(weekday - first.weekday()) % 7 + 7 * (n - 1))
+
+
+def _observed(d: date) -> date:
+    """토요일 공휴일은 금요일, 일요일 공휴일은 월요일에 쉰다."""
+    if d.weekday() == 5:
+        return d - timedelta(days=1)
+    if d.weekday() == 6:
+        return d + timedelta(days=1)
+    return d
+
+
+def us_federal_holidays(year: int) -> set[date]:
+    """그해 미국 연방 공휴일(현행 11개)의 관측일."""
+    fixed = [(1, 1), (6, 19), (7, 4), (11, 11), (12, 25)]
+    may_31 = date(year, 5, 31)
+    return {_observed(date(year, m, d)) for m, d in fixed} | {
+        _nth_weekday(year, 1, 0, 3),  # MLK
+        _nth_weekday(year, 2, 0, 3),  # Presidents' Day
+        may_31 - timedelta(days=may_31.weekday()),  # Memorial Day — 5월 마지막 월요일
+        _nth_weekday(year, 9, 0, 1),  # Labor Day
+        _nth_weekday(year, 10, 0, 2),  # Columbus Day
+        _nth_weekday(year, 11, 3, 4),  # Thanksgiving — 11월 4번째 목요일
+    }
+
+
+def sec_13f_deadline(period_end: date) -> date:
+    """13F 제출 기한: 분기말 + 45일, 토·일·연방 공휴일이면 다음 영업일 (Exchange Act Rule 0-3)."""
+    deadline = period_end + timedelta(days=45)
+    while deadline.weekday() >= 5 or deadline in us_federal_holidays(deadline.year):
+        deadline += timedelta(days=1)
+    return deadline
