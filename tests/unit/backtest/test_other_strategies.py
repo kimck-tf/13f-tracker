@@ -85,3 +85,26 @@ def test_conviction_follow_excludes_etfs_and_merges_classes(empty_conn):
     t = ConvictionFollow(top_k=2).get_target_positions(date(2024, 6, 1), c)
     assert set(t) == {"LBRDA", "AAPL"}  # SPY 제외, 발행사당 1개, 그다음 상위 2개
     assert t["LBRDA"] == pytest.approx(0.9 / 1.6)
+
+
+def test_conviction_follow_prefers_the_mapped_class_of_an_issuer(empty_conn):
+    # 같은 발행사(530307)의 미매핑 형제(전환사채 등)가 conviction이 더 높아도, 순위 뒤에 걸러질
+    # 그 행이 매핑된 보통주를 후보에서 밀어내면 안 된다
+    c = empty_conn
+    c.execute("INSERT INTO managers (cik, name) VALUES ('c1', 'M')")
+    c.execute(
+        "INSERT INTO filings VALUES "
+        "('a1', 'c1', '13F-HR', DATE '2024-03-31', DATE '2024-05-15', FALSE, NULL)"
+    )
+    c.executemany(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, is_etf) VALUES (?, ?, ?)",
+        [("530307107", "LBRDA", False), ("037833100", "AAPL", False)],
+    )
+    c.executemany(
+        "INSERT INTO signals_quarterly "
+        "(cik, cusip, period_of_report, change_type, weight_pct, conviction_score) "
+        "VALUES ('c1', ?, DATE '2024-03-31', 'hold', 0.1, ?)",
+        [("530307AB1", 0.9), ("530307107", 0.8), ("037833100", 0.7)],
+    )
+    t = ConvictionFollow(top_k=2).get_target_positions(date(2024, 6, 1), c)
+    assert set(t) == {"LBRDA", "AAPL"}

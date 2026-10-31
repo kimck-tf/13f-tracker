@@ -35,7 +35,8 @@ class ConvictionFollow(Strategy):
                 GROUP BY cik
             ),
             cand AS (
-                -- ETF를 빼고, 거장마다 발행사(CUSIP 앞 6자리)당 conviction 최고 클래스 하나
+                -- ETF를 빼고, 거장마다 발행사(CUSIP 앞 6자리)당 conviction 최고 클래스 하나.
+                -- 매핑된 클래스를 먼저 고른다 (순위 뒤에 걸러질 미매핑 형제가 밀어내지 않게)
                 SELECT s.cik, s.cusip, m.ticker, s.conviction_score
                 FROM signals_quarterly s
                 JOIN latest_per_cik l ON s.cik = l.cik AND s.period_of_report = l.p
@@ -44,7 +45,7 @@ class ConvictionFollow(Strategy):
                   AND COALESCE(m.is_etf, FALSE) = FALSE
                 QUALIFY ROW_NUMBER() OVER (
                     PARTITION BY s.cik, SUBSTR(s.cusip, 1, 6)
-                    ORDER BY s.conviction_score DESC NULLS LAST, s.cusip
+                    ORDER BY m.ticker IS NULL, s.conviction_score DESC NULLS LAST, s.cusip
                 ) = 1
             ),
             ranked AS (
