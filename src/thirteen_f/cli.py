@@ -36,9 +36,13 @@ def collect(
 def check_filings() -> None:
     """DB에 없는 13F-HR 원본이 EDGAR에 있는지 확인한다 (collect 전 점검, 자동 갱신의 신호).
 
-    있으면 한 줄씩 출력하고 exit 1, 없으면 exit 0. 확인 자체가 실패하면(네트워크·설정) exit 2 —
-    Python의 미처리 예외도 exit 1이라 `scripts/check_and_update.ps1`이 갱신 신호로 오인하지 않게.
+    그 분기의 기한(``sec_13f_deadline``)이 지난 공시가 있으면 한 줄씩 출력하고 exit 1, 없으면
+    exit 0. 기한이 아직인 분기의 공시는 "대기"로만 보여 준다 — 그 전에 collect하면
+    ``latest_public_period``가 DB에 들어온 일부 제출분만으로 그 분기를 공개된 것으로 보고 Plan 탭의
+    목표 비중을 바꾼다. 확인 자체가 실패하면(네트워크·설정) exit 2 — Python의 미처리 예외도
+    exit 1이라 ``scripts/check_and_update.ps1``이 갱신 신호로 오인하지 않게.
     """
+    from datetime import date as _date
     from pathlib import Path
 
     import duckdb
@@ -47,6 +51,7 @@ def check_filings() -> None:
     from thirteen_f.collect.edgar_client import EdgarClient
     from thirteen_f.collect.watch import find_new_filings
     from thirteen_f.core.config import load_settings
+    from thirteen_f.core.dates import sec_13f_deadline
 
     try:
         settings = load_settings()
@@ -64,12 +69,23 @@ def check_filings() -> None:
     if not new:
         typer.echo("새 13F-HR 없음")
         return
-    typer.echo(f"새 13F-HR {len(new)}건")
-    for n in new:
-        typer.echo(
-            f"  {n['label']:14s} {n['period_of_report']}  {n['filed_at']}  {n['accession_no']}"
-        )
-    raise typer.Exit(1)
+    today = _date.today()
+    ready = [n for n in new if today > sec_13f_deadline(n["period_of_report"])]
+    waiting = [n for n in new if n not in ready]
+
+    def line(n: dict) -> str:
+        return f"  {n['label']:14s} {n['period_of_report']}  {n['filed_at']}  {n['accession_no']}"
+
+    if ready:
+        typer.echo(f"새 13F-HR {len(ready)}건")
+        for n in ready:
+            typer.echo(line(n))
+    if waiting:
+        typer.echo(f"기한 전이라 대기 {len(waiting)}건 — 기한 다음 날부터 반영")
+        for n in waiting:
+            typer.echo(f"{line(n)}  (기한 {sec_13f_deadline(n['period_of_report'])})")
+    if ready:
+        raise typer.Exit(1)
 
 
 @app.command()

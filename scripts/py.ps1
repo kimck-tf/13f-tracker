@@ -4,6 +4,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $cfg = Get-Content (Join-Path $root '.venv\pyvenv.cfg')
 $home_ = ($cfg | Select-String '^home = (.+)$').Matches[0].Groups[1].Value.Trim()
 $python = Join-Path $home_ 'python.exe'
+$global:LASTEXITCODE = -1  # python.exe를 찾지 못해 실행하지 못하면 -1로 끝난다 (0이 아니라)
 $env:PYTHONPATH = "$root;$root\src;$root\.venv\Lib\site-packages"
 & $python @args
 exit $LASTEXITCODE

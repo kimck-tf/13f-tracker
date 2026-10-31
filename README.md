@@ -100,7 +100,7 @@ print(c.execute('''
 
 - [x] 백테스트 최적화 (2026-09-20) — 벤치마크 NAV 갱신·집계형 lookahead 규칙·NewBuyOnly `min_positions` 수정 후 79개 설정 탐색(`scripts/sweep_backtests.py`, DB 사본). Calmar 기준 1위 ConsensusTopK(3,10)을 비롯한 계열별 최적값을 기본 스위트에 반영. 보고서 `docs/backtest-optimization-2026-09.md`. `thirteen-f targets` 명령과 SPA **Plan** 탭(비교표 → 권장 전략 → 지금의 목표 비중·매수/매도 목록, `targets.json`) 추가
 
-**unit 255 passed · integration 3 passed + 1 skipped** (2026-10-31) (collect e2e는 로컬 VCR 카세트를 `RECORD_VCR=1`로 녹화해야 실행). (Frontend SPA는 단위 테스트 X — `thirteen-f serve` 후 브라우저 navigate 검증; LLM은 httpx mock + structured JSON schema 검증; Quarto는 사용자 CLI 설치 후 검증)
+**unit 257 passed · integration 3 passed + 1 skipped** (2026-10-31) (collect e2e는 로컬 VCR 카세트를 `RECORD_VCR=1`로 녹화해야 실행). (Frontend SPA는 단위 테스트 X — `thirteen-f serve` 후 브라우저 navigate 검증; LLM은 httpx mock + structured JSON schema 검증; Quarto는 사용자 CLI 설치 후 검증)
 
 **CI**: GitHub Actions — `ruff check src tests scripts` + unit 테스트 (Python 3.12·3.14, `.github/workflows/ci.yml`). integration은 네트워크·VCR 때문에 제외.
 
