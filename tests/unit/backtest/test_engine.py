@@ -208,7 +208,7 @@ def test_engine_skips_tickers_without_any_price(conn):
 def test_engine_rebuy_does_not_earn_the_return_made_while_out(conn):
     """4월에 AAPL을 팔고(MSFT 100%) 5월 1일에 다시 사면, 그날 수익에 AAPL의 4월 상승(+3%)이
     붙으면 안 된다 — 판 종목의 마지막 가격이 남아 있으면 재매수일에 한꺼번에 들어온다.
-    가격이 10일 넘게 끊겨 빠졌다가 돌아오는 종목(_drop_stale)도 같은 경로를 탄다."""
+    가격이 10일 넘게 끊겨 빠졌다가 돌아오는 종목(drop_stale)도 같은 경로를 탄다."""
 
     class Rotate(Strategy):
         name = "Rotate"

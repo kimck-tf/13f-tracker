@@ -190,6 +190,7 @@ def targets(
 
     import duckdb
 
+    from thirteen_f.backtest.engine import STALE_DAYS, tradeable_at
     from thirteen_f.backtest.runner import strategy_by_name
     from thirteen_f.core.config import load_settings
 
@@ -203,11 +204,15 @@ def targets(
 
     conn = duckdb.connect(str(settings.duckdb_path), read_only=True)
     try:
-        positions = strat.get_target_positions(as_of_date=d, conn=conn)
+        raw = strat.get_target_positions(as_of_date=d, conn=conn)
+        positions = tradeable_at(conn, raw, d)  # 백테스트와 같이 가격이 끊긴 종목은 뺀다
     finally:
         conn.close()
 
     typer.echo(f"{d} 기준 {strat.name} — {len(positions)}종목")
+    dropped = sorted(set(raw) - set(positions))
+    if dropped:
+        typer.echo(f"  가격이 {STALE_DAYS}일 넘게 없어 뺀 종목: {', '.join(dropped)}")
     if not positions:
         typer.echo("쓸 수 있는 13F가 없어 목표 종목이 없다 (전액 현금)")
         return

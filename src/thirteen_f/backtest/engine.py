@@ -55,7 +55,7 @@ def _fetch_prices_for_day(
     return {r[0]: r[1] for r in rows if r[1] is not None}
 
 
-def _drop_stale(
+def drop_stale(
     conn: duckdb.DuckDBPyConnection, target: dict[str, float], d: date
 ) -> dict[str, float]:
     """d까지의 마지막 가격이 STALE_DAYS보다 오래됐거나 가격이 없는 종목을 빼고, 남은 종목에
@@ -77,6 +77,19 @@ def _drop_stale(
         return {}
     scale = sum(target.values()) / total
     return {t: w * scale for t, w in kept.items()}
+
+
+def tradeable_at(
+    conn: duckdb.DuckDBPyConnection, target: dict[str, float], as_of: date
+) -> dict[str, float]:
+    """백테스트 밖(`targets`·Plan 탭)에서 엔진과 같은 `drop_stale`을 적용한다. 기준일은 as_of와
+    가격의 마지막 날 중 이른 날 — 가격 수집이 오래됐다고 전 종목을 빼지 않게. 가격이 하나도 없으면
+    판단할 근거가 없어 그대로 둔다."""
+    row = conn.execute("SELECT MAX(date) FROM prices").fetchone()
+    last = row[0] if row else None
+    if last is None:
+        return target
+    return drop_stale(conn, target, min(as_of, last))
 
 
 def run_backtest(
@@ -111,7 +124,7 @@ def run_backtest(
     from thirteen_f.core.dates import quarter_label
 
     for i, d in enumerate(business_days):
-        target = _drop_stale(conn, strategy.get_target_positions(as_of_date=d, conn=conn), d)
+        target = drop_stale(conn, strategy.get_target_positions(as_of_date=d, conn=conn), d)
         prices_today = _fetch_prices_for_day(
             conn, list(target.keys()) + list(current_weights.keys()) + [benchmark], d
         )

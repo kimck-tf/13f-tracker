@@ -12,7 +12,7 @@ from pathlib import Path
 
 import duckdb
 
-from thirteen_f.backtest.engine import STALE_DAYS
+from thirteen_f.backtest.engine import STALE_DAYS, tradeable_at
 from thirteen_f.backtest.runner import default_suite
 from thirteen_f.backtest.strategy import latest_public_period
 from thirteen_f.core.dates import parse_quarter, quarter_end, quarter_label, sec_13f_deadline
@@ -436,7 +436,9 @@ def export_targets(
 ) -> None:
     """Export ``targets.json`` — 기본 suite 전략별 현재 목표 비중 + 직전 목록 대비 diff (Plan 탭).
 
-    백테스트와 같은 ``get_target_positions``를 부르므로 ``thirteen-f targets``와 결과가 같다.
+    백테스트와 같은 ``get_target_positions``를 부르고 가격이 끊긴 종목은 엔진과 같은 규칙
+    (``tradeable_at``)으로 빼므로 ``thirteen-f targets``·백테스트 보유와 결과가 같다. 뺀 종목은
+    ``dropped``. 직전 목록에서는 빼지 않는다 — 들고 있을 수 있는 종목을 SELL에 STALE로 보여 준다.
     직전 목록은 현재 분기가 공개되기 전날(``public_since`` - 1일) 기준이다.
     ``recommended``는 최신 run 중 Calmar 1위(평균 보유 ``RECOMMEND_MIN_POSITIONS`` 이상).
     """
@@ -485,7 +487,8 @@ def export_targets(
 
     strategies = []
     for strat in default_suite():
-        current = strat.get_target_positions(as_of_date=as_of, conn=conn)
+        raw_current = strat.get_target_positions(as_of_date=as_of, conn=conn)
+        current = tradeable_at(conn, raw_current, as_of)
         previous = (
             strat.get_target_positions(as_of_date=public_since - timedelta(days=1), conn=conn)
             if public_since else {}
@@ -513,6 +516,7 @@ def export_targets(
             "metrics": metrics_by_name.get(strat.name),
             "positions": positions,
             "sells": sells,
+            "dropped": sorted(set(raw_current) - set(current)),
         })
 
     eligible = [
