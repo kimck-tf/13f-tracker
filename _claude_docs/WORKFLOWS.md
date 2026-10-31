@@ -4,7 +4,7 @@
 
 ## 새 분기 13F 반영
 
-1. `uv run thirteen-f update --skip-backtest --skip-export --skip-report` — `update`는 시작할 때 `data/backups/`(Google Drive 동기화 폴더)에 DB 사본을 만들어 최근 3개를 남기고, collect는 DB의 최소 분기부터 수집한다 (`--start`로 바꿀 수 있다). 가격 단계가 전 종목(약 1,650개)을 다시 받으므로 2시간 가까이 걸린다 (2026-09 실측: EDGAR 1분, OpenFIGI 5분, 가격 약 2시간). 실행 중에는 DB가 잠겨 다른 프로세스가 읽을 수 없다.
+1. `uv run thirteen-f update --skip-backtest --skip-export --skip-report` — `update`는 시작할 때 `data/backups/`(Google Drive 동기화 폴더)에 DB 사본을 만들어 최근 3개를 남기고, collect는 DB의 최소 분기부터 수집한다 (`--start`로 바꿀 수 있다). 가격 단계는 종목별 마지막 저장일 10일 전부터만 받고, 배당·분할로 수정 종가가 소급 조정되면 그 전 이력을 같은 비율로 재스케일한다 (전체 기간을 다시 받는 것은 겹치는 구간이 한 비율로 설명되지 않는 종목뿐). 요청은 종목당 1번 그대로라 약 1,650종목에 30분 안팎 걸린다 (2026-10-31 5종목 실측 종목당 약 1초. 전체 기간을 받던 2026-09에는 EDGAR 1분, OpenFIGI 5분, 가격 약 2시간). 실행 중에는 DB가 잠겨 다른 프로세스가 읽을 수 없다.
 2. SEC에 13F-HR을 낸 매니저 수와 `filings`의 새 분기 행 수가 같은지, 가격 실패 로그(`Both sources failed`)에 새 종목이 있는지 확인한다. 보유 중인데 가격이 끊긴 종목은 TROUBLESHOOTING.md의 "가격이 어느 날짜에서 끊김" 항목대로 처리한다.
 3. 새 ticker가 생겼으면 `uv run python scripts/supplement_sector.py`.
 4. `uv run thirteen-f update --skip-collect` — analyze → backtest --all → export → report. Quarto CLI가 없으면 `--skip-report`를 붙인다.

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Iterable
 
@@ -11,6 +11,9 @@ import duckdb
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+OVERLAP_DAYS = 10  # 증분 다운로드 때 마지막 저장일보다 이만큼 앞에서부터 받아 겹치는 구간을 만든다
+ADJ_TOLERANCE = 1e-4  # 겹치는 날의 값이 이 비율 안에서 같으면 같은 값으로 본다
 
 
 def to_stooq_ticker(yf_ticker: str) -> str:
@@ -127,6 +130,49 @@ def _upsert_prices(
     return len(rows)
 
 
+def _last_price_dates(conn: duckdb.DuckDBPyConnection) -> dict[str, date]:
+    """ticker별 저장된 마지막 가격 날짜."""
+    return dict(conn.execute("SELECT ticker, MAX(date) FROM prices GROUP BY ticker").fetchall())
+
+
+def _fetch(ticker: str, start: date) -> pd.DataFrame | None:
+    """yfinance, 비어 있으면 Stooq. 둘 다 비면 None."""
+    df = _yfinance_download(ticker, start)
+    if df is None or df.empty:
+        df = _stooq_download(ticker, start)
+    if df is None or df.empty:
+        return None
+    return df
+
+
+def _overlap_pairs(
+    conn: duckdb.DuckDBPyConnection, ticker: str, df: pd.DataFrame
+) -> list[tuple[float, float, float, float]]:
+    """새로 받은 df와 DB에 모두 있는 날의 (새 close, 새 adj_close, DB close, DB adj_close), 날짜순.
+
+    새 값이 NaN인 날(확정 전 거래일)과 DB 값이 0 이하인 날은 뺀다.
+    """
+    first = df.index.min().date()
+    stored = {
+        d: (c, a)
+        for d, c, a in conn.execute(
+            "SELECT date, close, adj_close FROM prices WHERE ticker = ? AND date >= ?",
+            (ticker, first),
+        ).fetchall()
+    }
+    pairs: list[tuple[float, float, float, float]] = []
+    for idx, row in df.sort_index().iterrows():
+        d = idx.date()
+        new_close, new_adj = row.get("Close"), row.get("Adj Close", row.get("Close"))
+        if d not in stored or pd.isna(new_close) or pd.isna(new_adj):
+            continue
+        db_close, db_adj = stored[d]
+        if not db_close or not db_adj or db_close <= 0 or db_adj <= 0:
+            continue
+        pairs.append((float(new_close), float(new_adj), float(db_close), float(db_adj)))
+    return pairs
+
+
 def download_prices(
     conn: duckdb.DuckDBPyConnection,
     tickers: Iterable[str],
@@ -134,15 +180,45 @@ def download_prices(
     failure_log: Path | None = None,
 ) -> dict[str, int]:
     """Download daily prices for tickers; return {ticker: row_count}.
+
+    이미 가격이 있는 ticker는 마지막 저장일 `OVERLAP_DAYS`일 전부터만 받는다. 겹치는 날의
+    수정 종가가 상수 배율로 달라졌으면(배당·분할의 소급 조정) 그 전 이력을 같은 배율로
+    재스케일하고, 배율이 날마다 다르면(데이터 정정) `start`부터 전체를 다시 받는다.
     Tickers with no data after both yfinance and Stooq are appended to failure_log.
     """
     results: dict[str, int] = {}
     failed: list[str] = []
+    last_dates = _last_price_dates(conn)
     for t in sorted(set(t for t in tickers if t)):
-        df = _yfinance_download(t, start)
-        if df is None or df.empty:
-            df = _stooq_download(t, start)
-        if df is None or df.empty:
+        last = last_dates.get(t)
+        df = _fetch(t, start if last is None else last - timedelta(days=OVERLAP_DAYS))
+        if df is not None and last is not None:
+            pairs = _overlap_pairs(conn, t, df)
+            if pairs:
+                new_close, new_adj, db_close, db_adj = pairs[-1]
+                r_adj, r_close = new_adj / db_adj, new_close / db_close
+                if abs(r_adj - 1) > ADJ_TOLERANCE or abs(r_close - 1) > ADJ_TOLERANCE:
+                    consistent = all(
+                        abs(na / (da * r_adj) - 1) <= ADJ_TOLERANCE
+                        and abs(nc / (dc * r_close) - 1) <= ADJ_TOLERANCE
+                        for nc, na, dc, da in pairs
+                    )
+                    if consistent:
+                        first = df.index.min().date()
+                        conn.execute(
+                            "UPDATE prices SET adj_close = adj_close * ?, open = open * ?, "
+                            "high = high * ?, low = low * ?, close = close * ? "
+                            "WHERE ticker = ? AND date < ?",
+                            (r_adj, r_close, r_close, r_close, r_close, t, first),
+                        )
+                        logger.info(
+                            "Rescaled %s history before %s (adj x%.6f, close x%.6f)",
+                            t, first, r_adj, r_close,
+                        )
+                    else:
+                        logger.info("Overlap for %s disagrees; refetching from %s", t, start)
+                        df = _fetch(t, start)
+        if df is None:
             logger.error("Both sources failed for %s", t)
             failed.append(t)
             results[t] = 0
