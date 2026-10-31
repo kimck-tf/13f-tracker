@@ -142,7 +142,7 @@ def test_index_html_versions_local_asset_urls(client: TestClient) -> None:
     for asset in ("hf-app.jsx", "hf-components.jsx", "hf-plan.jsx", "hf-styles.css", "hf-data.js"):
         assert re.search(rf'"{asset}\?v=[0-9a-f]+"', body), f"{asset} lacks ?v=: {body[:400]}"
     # CDN·외부 주소는 그대로 둔다 (integrity 해시가 깨지지 않게)
-    assert 'unpkg.com/react@18.3.1/umd/react.development.js"' in body
+    assert 'unpkg.com/react@18.3.1/umd/react.production.min.js"' in body
     assert "cdn.jsdelivr.net" in body and "jsdelivr.net/gh/orioncactus/pretendard@v1.3.9" in body
 
 

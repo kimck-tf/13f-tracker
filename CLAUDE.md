@@ -39,7 +39,7 @@ uv run thirteen-f serve                     # http://127.0.0.1:8765, 장시간 �
 uv run thirteen-f report --latest --open    # Quarto CLI + `uv sync --extra report` 필요 → reports/output/_latest/
 uv run thirteen-f update                    # collect(DB 최소 분기부터, --start로 변경) → analyze → backtest --all → export → report, --skip-* 로 제외
 
-uv run pytest tests/unit                    # 회귀 기준: 189건, 약 30초, 네트워크 불필요
+uv run pytest tests/unit                    # 회귀 기준: 237건, 약 25초, 네트워크 불필요
 uv run pytest tests/unit/web/test_server.py::test_root_serves_static_index_html   # 단일 테스트
 uv run pytest tests/unit -k consensus       # 키워드 필터
 uv run pytest tests/integration             # 4건 (= -m integration), collect e2e는 VCR 카세트가 없으면 skip
