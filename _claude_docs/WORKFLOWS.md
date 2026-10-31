@@ -97,3 +97,23 @@
 - `scripts/supplement_sector.py` — `cusip_ticker_map.sector/industry`를 yfinance로 채운다.
 
 완료: 보정 대상 행을 다시 조회해 누락이 줄었는지 `data/logs/failed_tickers*.jsonl`과 대조한다.
+
+## 서버 자동 시작
+
+`thirteen-f serve`(http://127.0.0.1:8765)는 장시간 실행이라 `update`에 없다. Windows 로그온 때 자동으로 띄우려면 작업 스케줄러에 등록한다. Smart App Control이 venv 런처를 막아도 뜨도록 `scripts\py.ps1`로 실행한다.
+
+1. 저장소 루트의 PowerShell에서 등록한다. 로그온 트리거를 현재 사용자로 한정해 관리자 창이 아니어도 등록된다.
+
+```powershell
+$root = (Get-Location).Path
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -WorkingDirectory $root `
+  -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$root\scripts\py.ps1`" -m thirteen_f.cli serve"
+$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Seconds 0) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+Register-ScheduledTask -TaskName "13f-serve" -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME) -Settings $settings
+Start-ScheduledTask -TaskName "13f-serve"
+```
+
+2. `curl.exe -s http://127.0.0.1:8765/api/health`가 `{"llm_available": …}`를 돌려주는지 본다.
+3. 해제: `Unregister-ScheduledTask -TaskName 13f-serve -Confirm:$false`.
+
+완료: 다시 로그온한 뒤 `/api/health`가 200을 돌려주고, 브라우저 `http://127.0.0.1:8765/#/plan`에 데이터가 보인다.
