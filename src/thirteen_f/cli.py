@@ -42,7 +42,7 @@ def check_filings() -> None:
     목표 비중을 바꾼다. 확인 자체가 실패하면(네트워크·설정) exit 2 — Python의 미처리 예외도
     exit 1이라 ``scripts/check_and_update.ps1``이 갱신 신호로 오인하지 않게.
     """
-    from datetime import date as _date
+    from datetime import UTC, datetime
     from pathlib import Path
 
     import duckdb
@@ -51,7 +51,7 @@ def check_filings() -> None:
     from thirteen_f.collect.edgar_client import EdgarClient
     from thirteen_f.collect.watch import find_new_filings
     from thirteen_f.core.config import load_settings
-    from thirteen_f.core.dates import sec_13f_deadline
+    from thirteen_f.core.dates import sec_13f_deadline, sec_13f_due_at
 
     try:
         settings = load_settings()
@@ -69,8 +69,8 @@ def check_filings() -> None:
     if not new:
         typer.echo("새 13F-HR 없음")
         return
-    today = _date.today()
-    ready = [n for n in new if today > sec_13f_deadline(n["period_of_report"])]
+    now = datetime.now(UTC)
+    ready = [n for n in new if now >= sec_13f_due_at(n["period_of_report"])]
     waiting = [n for n in new if n not in ready]
 
     def line(n: dict) -> str:

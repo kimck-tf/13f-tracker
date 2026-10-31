@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import duckdb
@@ -22,6 +22,7 @@ from thirteen_f.collect.price_loader import download_prices
 from thirteen_f.collect.resolve_cik import resolve_missing_ciks
 from thirteen_f.collect.value_units import fix_thousand_unit_filings
 from thirteen_f.core.config import Settings
+from thirteen_f.core.dates import sec_13f_due_at
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,7 @@ def run_collect(
     db_path: Path,
     start_date: date,
     failure_log: Path | None = None,
+    now: datetime | None = None,
 ) -> dict[str, int]:
     """Phase 1 전체 실행. 통계 dict 반환.
 
@@ -74,6 +76,9 @@ def run_collect(
     3. mark_supersedes
     4. CUSIP fill_missing
     5. Download prices for unique tickers
+    Filings of a quarter whose 13F deadline has not passed yet (``sec_13f_due_at``, ``now``
+    defaults to the current UTC time) are not loaded.
+
     6. Rescale filings reported in thousands of dollars (value_units) — also right after
        step 3 inside the same transaction, so a later failure never leaves a re-parsed
        filing at 1/1000
@@ -87,6 +92,7 @@ def run_collect(
         "value_unit_fixed": 0,
     }
 
+    now = now or datetime.now(UTC)
     conn = duckdb.connect(str(db_path))
     try:
         with EdgarClient(user_agent=settings.sec_user_agent) as client:
@@ -115,7 +121,16 @@ def run_collect(
                 for i, filer_cik in enumerate([m["cik"], *(m.get("extra_ciks") or [])]):
                     subs = client.get_submissions(filer_cik)
                     filings = extract_13f_filings(subs)
-                    filings = [f for f in filings if f["period_of_report"] >= start_date]
+                    # 기한 전 분기의 제출분은 적재하지 않는다 — DB에 들어온 일부 제출분만 보는
+                    # latest_public_period가 그 분기를 공개된 것으로 보지 않게
+                    held = [f for f in filings if now < sec_13f_due_at(f["period_of_report"])]
+                    if held:
+                        logger.info("Hold %d filings of %s until their 13F deadline",
+                                    len(held), m["label"])
+                    filings = [
+                        f for f in filings
+                        if f["period_of_report"] >= start_date and f not in held
+                    ]
                     if i == 0:
                         primary_periods = {f["period_of_report"] for f in filings}
                     for f in filings:

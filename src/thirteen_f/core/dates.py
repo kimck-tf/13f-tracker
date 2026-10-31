@@ -1,7 +1,7 @@
 """Quarter ↔ date 변환 유틸리티."""
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 _QUARTER_LAST_MONTH = {1: 3, 2: 6, 3: 9, 4: 12}
 _QUARTER_LAST_DAY = {1: 31, 2: 30, 3: 30, 4: 31}
@@ -81,3 +81,11 @@ def sec_13f_deadline(period_end: date) -> date:
     while deadline.weekday() >= 5 or deadline in us_federal_holidays(deadline.year):
         deadline += timedelta(days=1)
     return deadline
+
+
+
+def sec_13f_due_at(period_end: date) -> datetime:
+    """그 분기 13F를 모두 받을 수 있는 시각(UTC): 기한일 미 동부 17:30 — 그 뒤 제출은 다음 날짜로
+    접수된다. EST·EDT를 따로 보지 않고 22:30 UTC(EST 17:30, EDT 18:30, 한국 다음 날 07:30)로
+    둔다."""
+    return datetime.combine(sec_13f_deadline(period_end), time(22, 30), tzinfo=UTC)

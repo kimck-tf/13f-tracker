@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from unittest.mock import patch
 
 import duckdb
@@ -232,3 +232,30 @@ def test_a_failure_inside_the_manager_loop_rolls_back_the_reparse(tmp_path):
     with pytest.raises(KeyError):  # 가짜 EDGAR에 B의 제출 목록이 없다
         _collect(db, managers_yaml)
     assert _values(db) == [1000]
+
+
+def test_collect_holds_filings_until_their_quarter_is_due(tmp_path):
+    """기한 전 분기의 제출분은 적재하지 않는다 — DB에 들어온 일부 제출분만 보는
+    latest_public_period가 그 분기를 공개된 것으로 보지 않게. 기한일(2026-11-16) 22:30 UTC부터
+    적재한다."""
+    db = tmp_path / "t.duckdb"
+    init_db(db)
+    managers_yaml = tmp_path / "managers.yaml"
+    managers_yaml.write_text(YAML_A, encoding="utf-8")
+    settings = Settings(sec_user_agent="ua", openfigi_api_key="", duckdb_path=db)
+    fake = FakeEdgar({"0000000001": [("acc-q2", "2026-06-30", "2026-08-14"),
+                                     ("acc-q3", "2026-09-30", "2026-10-20")]})
+    stored = []
+    before, after = (datetime(2026, 11, 16, h, 0, tzinfo=UTC) for h in (12, 23))
+    for now in (before, after):
+        with (
+            patch("thirteen_f.collect.pipeline.EdgarClient", return_value=fake),
+            patch("thirteen_f.collect.pipeline.fill_missing", return_value=0),
+            patch("thirteen_f.collect.pipeline.download_prices", return_value={}),
+        ):
+            run_collect(settings, managers_yaml, db, date(2024, 1, 1), now=now)
+        conn = duckdb.connect(str(db))
+        rows = conn.execute("SELECT accession_no FROM filings ORDER BY 1").fetchall()
+        stored.append([r[0] for r in rows])
+        conn.close()
+    assert stored == [["acc-q2"], ["acc-q2", "acc-q3"]]

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 
 from thirteen_f.core.dates import (
     parse_quarter,
@@ -7,6 +7,7 @@ from thirteen_f.core.dates import (
     quarter_range,
     quarter_start,
     sec_13f_deadline,
+    sec_13f_due_at,
     us_federal_holidays,
 )
 
@@ -59,3 +60,8 @@ def test_sec_13f_deadline_rolls_past_weekends_and_holidays():
     assert sec_13f_deadline(date(2024, 9, 30)) == date(2024, 11, 14)
     # 금요일 그대로 — 그해 Presidents' Day는 2/17
     assert sec_13f_deadline(date(2024, 12, 31)) == date(2025, 2, 14)
+
+
+def test_sec_13f_due_at_is_after_the_deadline_day_closes_in_new_york():
+    # 기한일(11-16) 미 동부 17:30 뒤에 들어온 제출은 다음 날짜로 접수된다 — 22:30 UTC(한국 07:30)
+    assert sec_13f_due_at(date(2026, 9, 30)) == datetime(2026, 11, 16, 22, 30, tzinfo=UTC)
