@@ -11,7 +11,7 @@
 | `holdings` | `(accession_no, cusip, title_of_class, put_call)` | `value_usd`는 달러 단위. `put_call = ''`이면 옵션이 아닌 보유 |
 | `cusip_ticker_map` | `cusip` | `ticker IS NULL` = OpenFIGI 매핑 실패. `sector`/`industry`는 `scripts/supplement_sector.py` 실행 전엔 `''` |
 | `prices` | `(ticker, date)` | 엔진은 `adj_close`, `export_stocks`는 분기말 `close`를 쓴다 |
-| `signals_quarterly` | `(cik, cusip, period_of_report)` | `change_type`, `weight_pct`, conviction/continuity 점수 |
+| `signals_quarterly` | `(cik, cusip, period_of_report)` | `change_type`, `weight_pct`, conviction/continuity 점수. `exit` 행은 청산한 분기에만 있고 `shares_change` = −직전 주식 수, `value_change_usd` = −직전 가치, `weight_pct` = 0 |
 | `consensus_quarterly` | `(period_of_report, cusip)` | `holder_count`, `new_buy_count`, `holder_ciks` |
 | `total_scores` | `(period_of_report, cusip)` | 4개 성분 점수 + `total_score` |
 | `backtest_runs` | `run_id` | uuid hex. `strategy_name` = `Strategy.name`, `params_json`, `cost_bps`, `benchmark` |

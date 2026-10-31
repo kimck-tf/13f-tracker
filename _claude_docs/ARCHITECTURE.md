@@ -28,7 +28,7 @@ EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 �
 
 `analyze/pipeline.py` 호출 순서 (정확한 공식은 Spec §6.1):
 
-1. `diff.compute_signals_quarterly` — 매니저×종목×분기 `change_type` ∈ `new`/`increase`/`hold`/`decrease`/`exit`. 주식 수 변화율이 ±`--threshold`(기본 0.05) 이내면 `hold`.
+1. `diff.compute_signals_quarterly` — 매니저×종목×분기 `change_type` ∈ `new`/`increase`/`hold`/`decrease`/`exit`. 주식 수 변화율이 ±`--threshold`(기본 0.05) 이내면 `hold`. 비교 대상은 holdings가 있는 직전 제출 분기다. 전량 매도한 종목은 다음 제출 분기에 `exit` 행(0주)으로 남고, 공백 뒤 재진입은 `new`다.
 2. `conviction.update_conviction_scores` — 해당 매니저의 최대 비중 종목 대비 비중 (`min(1, weight / top_weight)`).
 3. `continuity.update_continuity_scores` — 최근 `WINDOW=4`분기 안에서 new/increase/hold가 끊기지 않고 이어진 분기 수 ÷ 4.
 4. `consensus.compute_consensus` — 분기×종목의 보유 거장 수, 신규매수 거장 수.
