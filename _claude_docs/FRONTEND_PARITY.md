@@ -8,7 +8,7 @@ Phase 5 SPA는 데이터의 1차 출처를 명확히 분리한다. 백엔드 exp
 |---|---|---|
 | `QUARTERS` / `Q_LABELS` | Backend (`exporter.export_quarters`) — filings.period_of_report 정렬 + Q-label 생성 | 단일 SSOT, frontend는 read-only |
 | `STOCKS[].px[i]` (분기말 close) | Backend (`exporter.export_stocks`) — prices 테이블 분기말 이하 가장 가까운 영업일 | unit test: `test_export_stocks_uses_sector_and_quarter_end_close` |
-| `STOCKS[].pxWeekly` | Frontend (`hf-data.js:buildWeeklyPrices`) — quarterly → 8-step interpolation + sin noise | 시각화 전용. 실거래 계산 금지 (분기말 px만 truth) |
+| `STOCKS[].pxw` (스파크라인 12주) | Backend (`exporter.export_stocks`) — `MAX(prices.date)`로 끝나는 최근 12개 ISO 주의 주별 마지막 close | `tests/unit/web/test_exporter.py::test_export_stocks_includes_last_12_weekly_closes`. 종목 상세 가격 차트는 `prices/{ticker}.json`의 일별 close (`fetchDailyPx`) |
 | `STOCKS[].s` (sector) | Backend (`cusip_ticker_map.sector` via supplement_sector.py) | `scripts/supplement_sector.py`로 1회 backfill 필수 |
 | `MANAGERS[].avatar` | Backend (`exporter._avatar_from_name`) — full name 단어별 첫 글자, 최대 2자 (Warren Buffett → WB) | `test_avatar_from_name` |
 | `MANAGERS[].color` | Backend (config/managers.yaml → managers.color) — style별 팔레트 | yaml 직접 수정 |

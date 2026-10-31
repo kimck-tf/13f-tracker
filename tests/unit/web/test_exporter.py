@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import duckdb
@@ -326,3 +326,23 @@ def test_export_backtest_writes_runs_with_holdings_and_metrics(conn, tmp_path: P
     assert run["holdingsLog"][0]["date"] == "2024-01-02"
     tickers = {h["ticker"] for h in run["holdingsLog"][0]["holdings"]}
     assert tickers == {"AAPL", "MSFT"}
+
+
+def test_export_stocks_includes_last_12_weekly_closes(conn, tmp_path: Path):
+    """pxw = MAX(prices.date)로 끝나는 최근 12 ISO 주의 주별 마지막 종가. 보간·노이즈 없음."""
+    conn.execute(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, name, sector, is_etf) "
+        "VALUES ('594918104', 'MSFT', 'Microsoft', 'Technology', FALSE)"
+    )
+    for i in range(100):  # 2024-03-23 ~ 2024-06-30, close = 1..100
+        d = date(2024, 6, 30) - timedelta(days=99 - i)
+        conn.execute(
+            "INSERT INTO prices (ticker, date, close, adj_close) VALUES ('MSFT', ?, ?, ?)",
+            (d, float(i + 1), float(i + 1)),
+        )
+    export_stocks(conn, tmp_path)
+    stocks = {s["t"]: s for s in json.loads((tmp_path / "stocks.json").read_text(encoding="utf-8"))}
+    msft = stocks["MSFT"]["pxw"]
+    assert len(msft) == 12 and msft[-1] == 100.0 and msft == sorted(msft)
+    assert msft[-2] == 93.0  # 직전 ISO 주(06-17~06-23)의 마지막 날 06-23 = 93
+    assert stocks["AAPL"]["pxw"] == [200.5]  # fixture의 06-28·06-30은 같은 ISO 주 → 1점

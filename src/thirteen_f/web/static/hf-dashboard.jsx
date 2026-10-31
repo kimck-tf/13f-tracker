@@ -29,7 +29,7 @@ function DashboardScreen({ quarter, setQuarter }) {
   const spotSeries = spot ? [{
     label: spot.ticker,
     color: "var(--ink)",
-    values: spot.stock.pxWeekly,
+    values: spot.stock.pxw,
     width: 1.8
   }] : [];
 
@@ -117,7 +117,7 @@ function DashboardScreen({ quarter, setQuarter }) {
                 return <span className="mono num">{fmtPct(avg, { decimals: 1 })}</span>;
               }, value: (r) => r.holders.reduce((a, b) => a + b.weight, 0) / r.holders.length },
             { key: "bar", label: "", flex: 0.8, sortable: false, render: (r) => <BarCell value={r.n} max={Math.max(...crowded.map((x) => x.n))} color="var(--accent)" /> },
-            { key: "spark", label: "PRICE 12W", w: 110, sortable: false, render: (r) => <Spark values={r.stock.pxWeekly.slice(-12)} w={100} h={22} fill /> }]
+            { key: "spark", label: "PRICE 12W", w: 110, sortable: false, render: (r) => <Spark values={r.stock.pxw} w={100} h={22} fill /> }]
             }
             rows={crowded}
             rowKey={(r) => r.ticker}

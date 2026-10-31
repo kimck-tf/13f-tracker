@@ -33,7 +33,7 @@ gitignore 대상이며 `uv run thirteen-f export`로 다시 만든다. SPA는 `/
 | `quarters.json` | `export_quarters` | `[{key: "2024Q2", label: "Q2'24", date: "2024-06-30"}]` | `QUARTERS`, `Q_LABELS`, `Q_DATES` |
 | `quarters_index.json` | `export_quarters` | `{"2024-03-31": 0, …}` | 사용하지 않음 (테스트만 검증) |
 | `managers.json` | `export_managers` | `Manager` 모델 (`id` = label 소문자, `avatar` = 이름 이니셜) | `MANAGERS`, `MGR_MAP` |
-| `stocks.json` | `export_stocks` | `[{t: ticker, n: 이름, s: sector, i: industry, px: [분기별 close 또는 null]}]` | `STOCKS`, `STOCK_MAP` |
+| `stocks.json` | `export_stocks` | `[{t: ticker, n: 이름, s: sector, i: industry, px: [분기별 close 또는 null], pxw: [시장 마지막 날로 끝나는 최근 12개 ISO 주의 주별 마지막 close, 가격이 없으면 []]}]` | `STOCKS`, `STOCK_MAP` |
 | `holdings.json` | `export_holdings` | `{<manager id>: {<ticker>: [분기별 보유 주식 수(백만 주)]}}` | `HOLDINGS` |
 | `holdings_unmapped.json` | `export_holdings` | `{<manager id>: {<cusip>: {name_of_issuer, shares: [...]}}}` | `HOLDINGS_UNMAPPED` (없으면 `{}`) |
 | `backtest.json` | `export_backtest` | `[{run_id, name, params, equity, dd, qrets, benchEquity, holdingsLog, metrics}]` — DB의 모든 run | `BACKTESTS` (없으면 `[]`) |

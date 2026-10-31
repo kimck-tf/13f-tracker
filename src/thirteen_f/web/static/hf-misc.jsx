@@ -268,7 +268,7 @@ function ConsensusScreen({ quarter, setQuarter }) {
               { key: "n", label: "#", w: 50, align: "right", render: r => <span className="mono num b">{r.n}</span>, value: r => r.n },
               { key: "avgW", label: "AVG %", w: 80, align: "right", render: r => <span className="mono num">{fmtPct(r.avgW, { decimals: 1 })}</span>, value: r => r.avgW },
               { key: "bar", label: "", flex: 0.8, sortable: false, render: r => <BarCell value={r.n} max={Math.max(...rows.map(x => x.n))} color="var(--accent)" /> },
-              { key: "spark", label: "PRICE 12W", w: 110, sortable: false, render: r => <Spark values={r.stock.pxWeekly.slice(-12)} w={100} h={24} fill /> },
+              { key: "spark", label: "PRICE 12W", w: 110, sortable: false, render: r => <Spark values={r.stock.pxw} w={100} h={24} fill /> },
             ]}
             rows={rows}
             initialSort={{ key: "n", dir: "desc" }}
@@ -380,7 +380,7 @@ function BuilderScreen({ quarter, setQuarter }) {
               ) },
               { key: "avgW", label: "AVG %", w: 80, align: "right", render: r => <span className="mono num">{fmtPct(r.avgWeight, { decimals: 1 })}</span>, value: r => r.avgWeight },
               { key: "sumDv", label: "SUM ΔV", w: 90, align: "right", render: r => <Delta value={r.sumDeltaValue * 1e6} kind="money" />, value: r => r.sumDeltaValue },
-              { key: "spark", label: "12W", w: 90, sortable: false, render: r => <Spark values={r.stock.pxWeekly.slice(-12)} w={80} h={20} fill /> },
+              { key: "spark", label: "12W", w: 90, sortable: false, render: r => <Spark values={r.stock.pxw} w={80} h={20} fill /> },
             ]}
             rows={results}
             initialSort={{ key: "sumDv", dir: "desc" }}

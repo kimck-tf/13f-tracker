@@ -5,7 +5,7 @@
 let QUARTERS = [];      // ["2024Q2", ...] — exporter quarters.json[i].key
 let Q_LABELS = [];      // ["Q2'24", ...] — exporter quarters.json[i].label
 let Q_DATES = [];       // ["2024-06-30", ...] — exporter quarters.json[i].date (ISO; /api/ask period에 사용)
-let STOCKS = [];        // [{t, n, s, i?, mc?, px:[N], yld?}] — exporter stocks.json
+let STOCKS = [];        // [{t, n, s, i?, mc?, px:[N], pxw:[≤12], yld?}] — exporter stocks.json
 let STOCK_MAP = {};     // {ticker: stock}
 let MANAGERS = [];      // [{id, name, firm, style, color, avatar, note}]
 let MGR_MAP = {};       // {id: manager}
@@ -28,26 +28,6 @@ const SECTOR_COLORS = {
   Healthcare: "#0e7490",
   Other: "#475569",
 };
-
-// Daily-ish price series for charting (12 quarters, 65 weekly samples)
-function buildWeeklyPrices(quarterly, drift = 0) {
-  // interpolate between quarter-end prices with mild noise; result length = (q-1)*8 + 1
-  const out = [];
-  let s = 1;
-  for (let i = 0; i < quarterly.length - 1; i++) {
-    const a = quarterly[i], b = quarterly[i + 1];
-    for (let j = 0; j < 8; j++) {
-      const f = j / 8;
-      const interp = a + (b - a) * f;
-      const noise = Math.sin(s * 1.7 + i * 1.3) * (a + b) * 0.008;
-      out.push(+(interp + noise).toFixed(2));
-      s++;
-    }
-  }
-  out.push(quarterly[quarterly.length - 1]);
-  return out;
-}
-// pxWeekly is rebuilt inside bootstrapFromJson once STOCKS is hydrated.
 
 // ─── Derived helpers ────────────────────────────────────────────────────────
 // classify action between two quarters
@@ -276,13 +256,6 @@ async function bootstrapFromJson(baseUrl = "/data") {
   Q_DATES = quarters.map(q => q.date);
   STOCKS = stocks;
   STOCK_MAP = Object.fromEntries(STOCKS.map(s => [s.t, s]));
-  STOCKS.forEach(st => {
-    if (Array.isArray(st.px) && st.px.length > 1) {
-      st.pxWeekly = buildWeeklyPrices(st.px);
-    } else {
-      st.pxWeekly = st.px ? st.px.slice() : [];
-    }
-  });
   MANAGERS = managers;
   MGR_MAP = Object.fromEntries(MANAGERS.map(m => [m.id, m]));
   HOLDINGS = holdings;

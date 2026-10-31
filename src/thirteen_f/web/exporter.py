@@ -167,6 +167,20 @@ def export_stocks(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
         ).fetchall():
             if ticker in px_matrix and close is not None:
                 px_matrix[ticker][q_idx] = float(close)
+    # 스파크라인용 주간 종가: 시장 마지막 날(MAX(prices.date))로 끝나는 최근 12개 ISO 주의
+    # 주별 마지막 close. 주가 모자라면 짧게, 가격이 없으면 []. 쿼리 한 번으로 전 ticker를 모은다.
+    pxw: dict[str, list[float]] = {}
+    for ticker, _week, week_close in conn.execute(
+        """
+        WITH last AS (SELECT MAX(date) AS d FROM prices)
+        SELECT ticker, date_trunc('week', date) AS wk, MAX_BY(close, date) AS wclose
+        FROM prices, last
+        WHERE date > last.d - INTERVAL 91 DAY AND close IS NOT NULL
+        GROUP BY ticker, wk
+        ORDER BY ticker, wk
+        """
+    ).fetchall():
+        pxw.setdefault(ticker, []).append(float(week_close))
     payload: list[dict] = []
     for ticker, display_name, sector, industry in rows:
         payload.append({
@@ -175,6 +189,7 @@ def export_stocks(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
             "s": sector,
             "i": industry or None,
             "px": px_matrix[ticker],
+            "pxw": pxw.get(ticker, [])[-12:],
         })
     (out_dir / "stocks.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
