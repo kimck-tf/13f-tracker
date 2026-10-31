@@ -5,10 +5,10 @@ Plan 작성 시점에 명시적 task 누락되어 별도 보완.
 """
 from thirteen_f.llm.gemini import generate
 from thirteen_f.llm.summary import (
-    headline_summary,
     explain_top_signals,
     fetch_quarter_context,
     fetch_top_signals,
+    headline_summary,
 )
 
 __all__ = [

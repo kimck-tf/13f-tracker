@@ -44,7 +44,10 @@ def test_serve_starts_and_health_returns_200(tmp_path) -> None:
             if proc.poll() is not None:
                 out = proc.stdout.read().decode("utf-8", errors="replace") if proc.stdout else ""
                 err = proc.stderr.read().decode("utf-8", errors="replace") if proc.stderr else ""
-                pytest.fail(f"server exited early (code={proc.returncode})\nSTDOUT:\n{out}\nSTDERR:\n{err}")
+                pytest.fail(
+                    f"server exited early (code={proc.returncode})\n"
+                    f"STDOUT:\n{out}\nSTDERR:\n{err}"
+                )
             try:
                 r = httpx.get(url, timeout=1.5)
                 if r.status_code == 200:

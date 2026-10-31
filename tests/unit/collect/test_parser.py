@@ -1,8 +1,7 @@
 from datetime import date
 from pathlib import Path
 
-from thirteen_f.collect.parser import parse_information_table, normalize_value, parse_amendment_type
-
+from thirteen_f.collect.parser import normalize_value, parse_amendment_type, parse_information_table
 
 FIXTURES = Path(__file__).parent.parent.parent / "fixtures" / "edgar"
 

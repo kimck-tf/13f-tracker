@@ -1,7 +1,6 @@
 """Phase 1 orchestration: resolve_cik → fetch filings → parse → upsert → CUSIP map → prices."""
 from __future__ import annotations
 
-import json
 import logging
 from datetime import date
 from pathlib import Path
@@ -161,7 +160,9 @@ def run_collect(
                     "SELECT DISTINCT cusip FROM holdings WHERE cusip IS NOT NULL"
                 ).fetchall()
             ]
-            stats["cusip_resolved"] = fill_missing(conn, all_cusips, settings.openfigi_api_key or None)
+            stats["cusip_resolved"] = fill_missing(
+                conn, all_cusips, settings.openfigi_api_key or None
+            )
 
             # 6) Prices
             tickers = [
@@ -172,7 +173,9 @@ def run_collect(
             stats["price_tickers"] = len(tickers)
             price_results = download_prices(conn, tickers, start_date, failure_log)
             n_failed = sum(1 for v in price_results.values() if v == 0)
-            logger.info("Prices: %d tickers downloaded, %d failed", len(tickers) - n_failed, n_failed)
+            logger.info(
+                "Prices: %d tickers downloaded, %d failed", len(tickers) - n_failed, n_failed
+            )
 
             # 7) 천 달러 단위 필링 보정 — 분기말 종가로 판정하므로 가격 다음에 둔다
             fixed = fix_thousand_unit_filings(conn)

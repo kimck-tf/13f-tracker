@@ -64,7 +64,8 @@ def backtest(
     cost_bps: float = typer.Option(10.0, help="편도 거래비용 (bp)"),
 ) -> None:
     """Phase 3: 백테스트 실행. --all 또는 --strategy 중 하나 지정."""
-    from datetime import date as _date, datetime
+    from datetime import date as _date
+    from datetime import datetime
     from pathlib import Path
 
     from thirteen_f.backtest.runner import run_suite

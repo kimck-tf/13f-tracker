@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Iterable
 from datetime import date
-from typing import Iterable
 
 import duckdb
 

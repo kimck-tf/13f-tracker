@@ -9,7 +9,8 @@ WINDOW = 4
 def continuity_from_changes(history: list[str]) -> float:
     """history는 오래된 → 최신 순서. decrease/exit를 만나면 reset.
 
-    Returns: count of unbroken buying-quarters ending at the latest, capped at WINDOW, divided by WINDOW.
+    Returns: count of unbroken buying-quarters ending at the latest, capped at WINDOW,
+    divided by WINDOW.
     """
     count = 0
     for ch in history[-WINDOW:]:

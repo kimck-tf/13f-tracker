@@ -28,7 +28,8 @@ def conn(tmp_path):
     # consensus_quarterly로 holder_count
     c.executemany(
         """INSERT INTO consensus_quarterly
-           (period_of_report, cusip, ticker, holder_count, new_buy_count, holder_ciks, avg_conviction)
+           (period_of_report, cusip, ticker, holder_count, new_buy_count,
+            holder_ciks, avg_conviction)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         [
             (date(2024, 3, 31), "037833100", "AAPL", 7, 2, "c1,c2", 0.7),
@@ -114,7 +115,8 @@ def test_lookahead_blocks_future_scores(conn):
 ])
 def test_aggregate_scores_wait_until_every_manager_has_filed(conn, strategy):
     """total_scores·consensus는 그 분기 매니저 전원의 보유를 합친 값이라, 첫 제출자(05-15)가 아니라
-    마지막 제출자(05-17)의 13F-HR이 공개된 뒤에야 쓸 수 있다 (실데이터: 2025Q3 Burry 11-03 vs 나머지 11-14)."""
+    마지막 제출자(05-17)의 13F-HR이 공개된 뒤에야 쓸 수 있다
+    (실데이터: 2025Q3 Burry 11-03 vs 나머지 11-14)."""
     assert strategy.get_target_positions(as_of_date=date(2024, 5, 16), conn=conn) == {}
     assert strategy.get_target_positions(as_of_date=date(2024, 5, 17), conn=conn) != {}
 

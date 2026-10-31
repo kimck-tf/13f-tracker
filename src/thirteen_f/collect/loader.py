@@ -33,7 +33,8 @@ def upsert_manager(conn: duckdb.DuckDBPyConnection, m: dict[str, Any]) -> None:
 def upsert_filing(conn: duckdb.DuckDBPyConnection, f: dict[str, Any]) -> None:
     conn.execute(
         """
-        INSERT INTO filings (accession_no, cik, form_type, period_of_report, filed_at, is_amendment, superseded_by)
+        INSERT INTO filings (accession_no, cik, form_type, period_of_report, filed_at,
+                             is_amendment, superseded_by)
         VALUES (?, ?, ?, ?, ?, ?, NULL)
         ON CONFLICT (accession_no) DO UPDATE SET
             form_type=excluded.form_type,
@@ -104,7 +105,8 @@ def mark_supersedes(conn: duckdb.DuckDBPyConnection, cik: str) -> int:
     """Spec §5.2: 같은 (cik, period_of_report) 내 최신 filed_at 외 모두 superseded_by 마킹.
     최신 항목은 superseded_by=NULL 유지.
     """
-    # 1. 모든 (cik, period) 그룹의 최신 accession 식별 (latest_acc) + 같은 그룹의 모든 accession (acc)
+    # 1. 모든 (cik, period) 그룹의 최신 accession 식별 (latest_acc)
+    #    + 같은 그룹의 모든 accession (acc)
     rows = conn.execute(
         """
         WITH ranked AS (

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from thirteen_f.core.config import Settings, load_settings
+from thirteen_f.core.config import load_settings
 
 
 def test_settings_loads_user_agent(monkeypatch, tmp_path):

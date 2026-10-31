@@ -27,7 +27,9 @@ def test_health_returns_llm_status(client: TestClient, monkeypatch: pytest.Monke
     assert r.json()["llm_available"] is False
 
 
-def test_health_reports_true_when_key_set(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_health_reports_true_when_key_set(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("GOOGLE_API_KEY", "dummy")
     r = client.get("/api/health")
     assert r.json()["llm_available"] is True
@@ -83,8 +85,8 @@ def test_ask_rate_limit_kicks_in_after_10(
 def test_ask_returns_text_and_cards_on_success(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    from thirteen_f.web import server as srv
     from scripts.init_db import init_db
+    from thirteen_f.web import server as srv
 
     srv._rate_limit.clear()
     monkeypatch.setenv("GOOGLE_API_KEY", "dummy")

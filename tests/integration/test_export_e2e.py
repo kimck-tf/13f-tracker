@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-import sys
 from datetime import date
 from pathlib import Path
 
@@ -124,7 +123,8 @@ def test_export_real_subprocess(tmp_path: Path, populated_db: Path) -> None:
         timeout=60,
     )
     assert result.returncode == 0, (
-        f"exit={result.returncode}\n--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        f"exit={result.returncode}\n--- stdout ---\n{result.stdout}\n"
+        f"--- stderr ---\n{result.stderr}"
     )
     # 핵심 파일 생성 확인
     for fname in ("meta.json", "managers.json", "quarters.json", "stocks.json", "backtest.json"):

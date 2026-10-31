@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 import time
+from datetime import date
 from typing import Any
 
 import httpx
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
 
 EDGAR_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
@@ -35,7 +36,7 @@ class EdgarClient:
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> "EdgarClient":
+    def __enter__(self) -> EdgarClient:
         return self
 
     def __exit__(self, *args: Any) -> None:
@@ -85,8 +86,6 @@ class EdgarClient:
         return self._get(COMPANY_TICKERS_URL).json()
 
 
-from datetime import date
-
 
 def extract_13f_filings(submissions: dict[str, Any]) -> list[dict[str, Any]]:
     """submissions JSON에서 13F-HR / 13F-HR/A 만 추출.
@@ -101,7 +100,7 @@ def extract_13f_filings(submissions: dict[str, Any]) -> list[dict[str, Any]]:
     report = recent.get("reportDate", [])
 
     out: list[dict[str, Any]] = []
-    for acc, form, fd, rd in zip(accs, forms, filed, report):
+    for acc, form, fd, rd in zip(accs, forms, filed, report, strict=True):
         if form not in ("13F-HR", "13F-HR/A"):
             continue
         out.append(

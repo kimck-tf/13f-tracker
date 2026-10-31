@@ -44,7 +44,7 @@ uv run pytest tests/unit/web/test_server.py::test_root_serves_static_index_html 
 uv run pytest tests/unit -k consensus       # 키워드 필터
 uv run pytest tests/integration             # 4건 (= -m integration), collect e2e는 VCR 카세트가 없으면 skip
 
-uv run ruff check <수정한 파일>              # 기준선에 기존 위반이 있어 파일 단위로 확인
+uv run ruff check src tests scripts          # 0건이 기준 (CI와 같은 명령)
 uv run mypy src/thirteen_f
 ```
 
@@ -84,6 +84,6 @@ DuckDB ─ export ─▶ web/data/*.json ─ serve(FastAPI) ─▶ SPA(web/stati
 - **Phase 단위 진행**: 한 Phase(또는 plan Chunk)를 마치면 멈추고 DoD(Spec §10, plan의 DoD 검증 Task) 충족 여부를 보고한 뒤 사용자 승인을 받고 다음으로 넘어간다.
 - **TDD**: 실패하는 테스트 → 최소 구현 → `uv run pytest tests/unit` 전체 통과 → 커밋 (plan의 step 단위).
 - **stage는 파일을 지정해서** (`git add <path>`): 루트에 커밋 대상이 아닌 미추적 파일(`handoff/`, `data/logs/`, `reports/output/`, `.omc/` 등)이 있어 `git add .`나 `-A`는 이것들을 함께 끌어들인다.
-- **정적 검사**: 수정한 파일의 ruff·mypy 위반 수가 수정 전보다 늘지 않게 한다. 기존 위반 일괄 정리는 요청받았을 때만 한다 — 무관한 diff가 섞인다.
+- **정적 검사**: ruff는 `src tests scripts` 전체 0건을 유지한다. mypy는 기준선이 남아 있어 수정한 파일의 위반 수가 수정 전보다 늘지 않게 한다. 기존 mypy 위반 일괄 정리는 요청받았을 때만 한다 — 무관한 diff가 섞인다.
 - **`data/13f.duckdb`는 git 밖의 유일본**이다 (재수집에 수십 분 이상 + API 한도). 파일 삭제, 테이블 DROP·DELETE, 재생성 전에는 사용자에게 확인하고 복사본을 만든다. `scripts/init_db.py` 재실행은 idempotent라 여기에 해당하지 않는다. `update`는 시작할 때 `data/backups/`(Google Drive 동기화 폴더)에 최근 3개를 남긴다.
 - **frontend는 `src/thirteen_f/web/static/`에서만 수정**한다. `handoff/design/`은 구현 전 디자인 원본이며, `handoff/`의 구조 권고(Next.js, "hf-data.js가 알고리즘 정답")는 실제 구현과 다르다.

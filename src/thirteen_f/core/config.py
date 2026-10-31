@@ -7,7 +7,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-
 _DEFAULT_GOOGLE_MODEL = "gemini-3-flash-preview"
 
 
@@ -46,6 +45,8 @@ def load_settings() -> Settings:
         openfigi_api_key=os.environ.get("OPENFIGI_API_KEY", "").strip().strip('"'),
         duckdb_path=Path(os.environ.get("DUCKDB_PATH", "data/13f.duckdb").strip().strip('"')),
         google_api_key=os.environ.get("GOOGLE_API_KEY", "").strip().strip('"'),
-        google_model=(os.environ.get("GOOGLE_MODEL", "").strip().strip('"') or _DEFAULT_GOOGLE_MODEL),
+        google_model=(
+            os.environ.get("GOOGLE_MODEL", "").strip().strip('"') or _DEFAULT_GOOGLE_MODEL
+        ),
         gemini_thinking=_parse_bool(os.environ.get("GEMINI_THINKING", ""), default=True),
     )

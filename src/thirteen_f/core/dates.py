@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from datetime import date
 
-
 _QUARTER_LAST_MONTH = {1: 3, 2: 6, 3: 9, 4: 12}
 _QUARTER_LAST_DAY = {1: 31, 2: 30, 3: 30, 4: 31}
 _QUARTER_FIRST_MONTH = {1: 1, 2: 4, 3: 7, 4: 10}

@@ -18,7 +18,8 @@ def latest_period(conn: duckdb.DuckDBPyConnection) -> date | None:
 
 def manager_list(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     return conn.execute(
-        "SELECT cik, label, name, fund, style, active_since, cloning_score_weight FROM managers ORDER BY label"
+        "SELECT cik, label, name, fund, style, active_since, cloning_score_weight "
+        "FROM managers ORDER BY label"
     ).fetchdf()
 
 

@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterable
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Iterable
 
 import duckdb
 import pandas as pd
@@ -66,8 +66,9 @@ def _stooq_download(ticker: str, start: date) -> pd.DataFrame | None:
     if not api_key:
         return None
     try:
-        import httpx
         from io import StringIO
+
+        import httpx
 
         stooq_t = to_stooq_ticker(ticker)
         url = (

@@ -109,7 +109,8 @@ def compute_signals_quarterly(
                END AS change_type,
                (shares - COALESCE(prev_shares, 0)) AS shares_change,
                (value_usd - COALESCE(prev_value, 0)) AS value_change_usd,
-               CASE WHEN total_value > 0 THEN value_usd * 1.0 / total_value ELSE 0 END AS weight_pct,
+               CASE WHEN total_value > 0 THEN value_usd * 1.0 / total_value ELSE 0 END
+                   AS weight_pct,
                NULL::DOUBLE AS conviction_score,
                NULL::DOUBLE AS continuity_score
         FROM lagged

@@ -13,7 +13,8 @@ def test_conviction_single_holding():
 
 
 def test_conviction_normalize():
-    assert conviction_score(weight_pct=0.05, top_weight=0.20, holding_count=10) == pytest.approx(0.25)
+    score = conviction_score(weight_pct=0.05, top_weight=0.20, holding_count=10)
+    assert score == pytest.approx(0.25)
     assert conviction_score(weight_pct=0.20, top_weight=0.20, holding_count=10) == 1.0
 
 

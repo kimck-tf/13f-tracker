@@ -5,11 +5,11 @@ import pytest
 
 from scripts.init_db import init_db
 from thirteen_f.collect.loader import (
-    upsert_manager,
-    upsert_filing,
-    upsert_holdings,
     mark_supersedes,
     remove_filing,
+    upsert_filing,
+    upsert_holdings,
+    upsert_manager,
 )
 
 

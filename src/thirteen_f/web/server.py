@@ -123,8 +123,10 @@ def ask(req: AskRequest, request: Request) -> AskResponse:
 
     try:
         period = date.fromisoformat(req.period)
-    except ValueError:
-        raise HTTPException(400, detail=f"Invalid period (expected YYYY-MM-DD): {req.period}")
+    except ValueError as exc:
+        raise HTTPException(
+            400, detail=f"Invalid period (expected YYYY-MM-DD): {req.period}"
+        ) from exc
 
     from thirteen_f.llm.summary import chat_reply
 

@@ -74,7 +74,7 @@ def main():
     rows = fetch_top_signals(conn, period, top_n=10)
     ep = signal_explain_prompt(str(period), rows)
 
-    print(f"=== Gemini Before/After 비교 ===")
+    print("=== Gemini Before/After 비교 ===")
     print(f"Model: {model}")
     print(f"Period: {period}")
     print()

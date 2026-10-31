@@ -80,7 +80,7 @@ def fetch_top_signals(
     cols = ["ticker", "total_score", "consensus_score", "conviction_score",
             "continuity_score", "cloning_quality_score",
             "holder_count", "new_buy_count"]
-    return [dict(zip(cols, r)) for r in rows]
+    return [dict(zip(cols, r, strict=True)) for r in rows]
 
 
 def headline_summary(

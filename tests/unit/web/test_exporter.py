@@ -179,7 +179,9 @@ def test_export_prices_split_per_ticker(conn, tmp_path: Path):
 def test_export_holdings_cutoff_excludes_delinquent_filing(tmp_path: Path):
     """C4 보강: filed_at > q+180d delinquent filing은 export에서 제외되는지 검증."""
     from datetime import date
+
     import duckdb
+
     from scripts.init_db import init_db
     from thirteen_f.collect.loader import upsert_filing, upsert_holdings, upsert_manager
     from thirteen_f.web.exporter import export_holdings
@@ -244,7 +246,8 @@ def test_export_holdings_splits_mapped_and_unmapped(conn, tmp_path: Path):
     # Mapping coverage ≥ 85% (CLAUDE.md known issue)
     total_mapped = sum(len(v) for v in holdings.values())
     total_unmapped = sum(len(v) for v in unmapped.values())
-    coverage = total_mapped / (total_mapped + total_unmapped) if (total_mapped + total_unmapped) else 1.0
+    total = total_mapped + total_unmapped
+    coverage = total_mapped / total if total else 1.0
     assert coverage >= 0.5  # 2 mapped / 3 total = 66.7%
 
 
@@ -296,7 +299,8 @@ def test_export_backtest_writes_runs_with_holdings_and_metrics(conn, tmp_path: P
             (d, nav, bn),
         )
     conn.execute(
-        "INSERT INTO backtest_metrics VALUES ('r1', 0.10, 0.12, 1.5, 1.8, -0.05, 2.4, 0.66, 0.03, 0.04)"
+        "INSERT INTO backtest_metrics VALUES "
+        "('r1', 0.10, 0.12, 1.5, 1.8, -0.05, 2.4, 0.66, 0.03, 0.04)"
     )
     conn.execute(
         "INSERT INTO backtest_holdings VALUES ('r1', DATE '2024-01-02','AAPL',0.5)"
