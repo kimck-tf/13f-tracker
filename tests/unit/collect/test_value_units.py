@@ -99,3 +99,12 @@ def test_option_rows_are_ignored_in_detection(conn):
     # 정상 5행(비율 1) + 풋 6행(비율 0.001): 풋을 세면 중앙값이 0.001이라 오탐, 빼면 1.0
     upsert_holdings(conn, "n1", _rows(5, value=1000) + _rows(6, value=1, put_call="PUT"))
     assert detect_thousand_unit_filings(conn) == ["k1"]
+
+
+def test_minority_thousand_unit_rows_do_not_flag_a_filing(conn):
+    # 6행 중 2행만 천 달러(비율 0.001) — 중앙값은 1이라 필링 전체를 ×1000 하지 않는다
+    rows = _rows(6, value=1000)
+    for r in rows[4:]:
+        r["value_usd"] = 1
+    upsert_holdings(conn, "n1", rows)
+    assert detect_thousand_unit_filings(conn) == ["k1"]

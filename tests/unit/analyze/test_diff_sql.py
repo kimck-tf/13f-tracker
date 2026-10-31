@@ -141,3 +141,12 @@ def test_exit_rows_feed_consensus_and_continuity(conn):
         "AND period_of_report = ?",
         (Q3,),
     ).fetchone()[0] == pytest.approx(0.25)
+
+
+def test_no_zero_share_rows_after_an_exit(conn):
+    # AAA는 Q3에 청산했다. m1이 Q4에도 제출하면 AAA는 Q4에 행이 없어야 한다 (0주 hold 행 금지)
+    q4 = date(2024, 12, 31)
+    _filing(conn, "m1q4", "m1", q4)
+    upsert_holdings(conn, "m1q4", [_h("BBB", 60), _h("CCC", 10)])
+    compute_signals_quarterly(conn)
+    assert _types(conn, "m1", "AAA") == {Q1: "new", Q2: "hold", Q3: "exit"}
