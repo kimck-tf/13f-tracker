@@ -7,6 +7,7 @@ CLAUDE.md `## Architecture`를 보충한다. 파일 목록은 `git ls-files`로 
 | 명령 | 진입점 | 읽기 | 쓰기 | 다시 실행하면 |
 |---|---|---|---|---|
 | `collect` | `collect/pipeline.py:run_collect` | `config/managers.yaml`, EDGAR, OpenFIGI, yfinance(+Stooq) | `managers`, `filings`, `holdings`, `cusip_ticker_map`, `prices`, `data/logs/failed_tickers.jsonl` | upsert로 갱신 (중복 행 없음) |
+| `check-filings` | `cli.py:check_filings` → `collect/watch.py:find_new_filings` | `config/managers.yaml`, EDGAR submissions, `filings` (read-only 연결) | — (출력과 exit code: 새 13F-HR 3, 없음 0, 확인 실패 2) | 쓰기 없음 |
 | `analyze` | `analyze/pipeline.py:run_analyze` | `filings`, `holdings`, `managers`, `cusip_ticker_map`, `config/scoring.toml` | `signals_quarterly`, `consensus_quarterly`, `total_scores` | 세 테이블을 DELETE 후 전체 재계산 |
 | `backtest` | `backtest/runner.py:run_suite`(`--all`), `backtest/engine.py:run_backtest` | 분석 테이블, `filings`, `holdings`, `prices` | `backtest_runs`, `backtest_curves`, `backtest_metrics`, `backtest_holdings` | 새 `run_id`(uuid)로 누적, 이전 run은 남음 |
 | `export` | `web/cli.py:do_export` → `web/exporter.py` | 전체 (read-only 연결) | `src/thirteen_f/web/data/` | 파일 덮어쓰기 |
@@ -21,6 +22,7 @@ CLAUDE.md `## Architecture`를 보충한다. 파일 목록은 `git ls-files`로 
 3. 매니저마다 `loader.mark_supersedes(cik)`로 정정본을 표시한다.
 4. `cusip_mapper.fill_missing` — `cusip_ticker_map`에 없는 CUSIP만 OpenFIGI로 조회해 캐시한다 (매핑 실패도 `ticker=NULL` 행으로 캐시되어 다시 조회하지 않는다). 첫 글자가 알파벳인 CINS 코드는 `ID_CINS`, 나머지는 `ID_CUSIP`으로 조회한다.
 5. `price_loader.download_prices` — ticker마다 yfinance, 비어 있으면 Stooq. 둘 다 실패하면 실패 로그(jsonl)에 추가한다.
+6. `value_units.fix_thousand_unit_filings` — 2023-01-03 이후인데도 금액을 천 달러로 낸 유효 필링을 찾아 `holdings.value_usd`를 ×1000 한다. 필링마다 ticker·분기말 종가가 있는 일반주 행의 `value_usd / (shares × close)` 중앙값이 0.01 미만이고 5행 이상이면 대상이다. 보정 뒤에는 비율이 ~1이라 다시 실행해도 한 번만 곱해진다. collect는 범위 안 필링을 매번 다시 파싱해 원값으로 되돌리므로, 매니저 루프(2·3단계)를 한 트랜잭션으로 묶고 커밋 직전에 한 번 더 보정한다 — 루프 도중 실패하면 커밋하지 않고, 뒤의 OpenFIGI·가격 단계가 실패해도 가격이 있는 분기는 이미 보정돼 있다. 새 분기는 가격을 받은 뒤 이 단계에서 보정된다.
 
 EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 초당 10건) `httpx.HTTPError`에 tenacity로 최대 4회 시도한다.
 
@@ -28,18 +30,19 @@ EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 �
 
 `analyze/pipeline.py` 호출 순서 (정확한 공식은 Spec §6.1):
 
-1. `diff.compute_signals_quarterly` — 매니저×종목×분기 `change_type` ∈ `new`/`increase`/`hold`/`decrease`/`exit`. 주식 수 변화율이 ±`--threshold`(기본 0.05) 이내면 `hold`.
+1. `diff.compute_signals_quarterly` — 매니저×종목×분기 `change_type` ∈ `new`/`increase`/`hold`/`decrease`/`exit`. 주식 수 변화율이 ±`--threshold`(기본 0.05) 이내면 `hold`. 비교 대상은 holdings가 있는 직전 제출 분기다. 전량 매도한 종목은 다음 제출 분기에 `exit` 행(0주)으로 남고, 공백 뒤 재진입은 `new`다. 풋옵션 행은 보유로 세지 않는다(콜은 기초자산 주식 수로 합산).
 2. `conviction.update_conviction_scores` — 해당 매니저의 최대 비중 종목 대비 비중 (`min(1, weight / top_weight)`).
 3. `continuity.update_continuity_scores` — 최근 `WINDOW=4`분기 안에서 new/increase/hold가 끊기지 않고 이어진 분기 수 ÷ 4.
 4. `consensus.compute_consensus` — 분기×종목의 보유 거장 수, 신규매수 거장 수.
-5. `score.compute_total_scores` — consensus(보유 거장 수 ÷ 전체 거장 수), conviction 평균, continuity 평균, cloning_quality(`managers.cloning_score_weight` 평균)를 `scoring.toml` 가중치로 합산한다. `exit` 행은 제외.
+5. `score.compute_total_scores` — consensus(보유 거장 수 ÷ 그 분기에 유효 필링을 낸 거장 수), conviction 평균, continuity 평균, cloning_quality(`managers.cloning_score_weight` 평균)를 `scoring.toml` 가중치로 합산한다. `exit` 행은 제외.
 
-`concentration.py`(HHI)와 `cloning_quality.py`는 이 파이프라인에서 호출되지 않는다. HHI는 `_legacy_dashboard`만 쓰고 cloning_quality 계산은 `score.py` SQL에 인라인돼 있으므로, 점수 공식은 `score.py`에서 바꾼다.
+`concentration.py`(HHI)와 `cloning_quality.py`는 이 파이프라인에서 호출되지 않는다. HHI는 Streamlit 대시보드 삭제(2026-10-31) 뒤 쓰는 곳이 없고 cloning_quality 계산은 `score.py` SQL에 인라인돼 있으므로, 점수 공식은 `score.py`에서 바꾼다.
 
 ## backtest (Phase 3)
 
 - **Strategy 계약** (`backtest/strategy.py`): `get_target_positions(as_of_date, conn) -> {ticker: weight}`. 비중 합 1.0, `ticker IS NULL` 제외, SQL에 lookahead 가드. `name`에 파라미터를 넣는다(예: `ScoreTopK(20)`) — `backtest_runs.strategy_name`과 SPA 매칭 키로 쓰인다.
-- **엔진** (`engine.run_backtest`): 벤치마크(SPY) 가격이 있는 날만 영업일로 순회하므로 `--start`/`--end`는 SPY 가격 범위로 잘린다. 매 영업일 전략을 호출해 target이 바뀐 날만 리밸런싱하고 turnover × `cost_bps`(편도)를 차감한다(첫 진입 포함). 그날 가격이 없는 종목은 직전 가격으로 채워 수익률 0으로 둔다. 분기 첫 영업일 비중을 `holdings_log` → `backtest_holdings`에 저장한다.
+- **집계 전략의 종목 단위** (`consensus_top_k`·`score_top_k`·`new_buy_only`·`conviction_follow`·`multi_manager`): `cusip_ticker_map.is_etf` 종목을 빼고 발행사(CUSIP 앞 6자리)마다 한 클래스만 남긴다. 대표 클래스는 어느 전략이든 보통주가 먼저다 — 13F `titleOfClass`가 `*W EXP …`(워런트)·warrant·right인 클래스(`strategy.NON_COMMON_CUSIPS_SQL`)는 뒤로 미룬다. 그다음 기준은 ConsensusTopK·ScoreTopK·NewBuyOnly가 `total_score` 최고, ConvictionFollow가 거장별 `conviction_score` 최고(그 뒤 거장 사이에서 발행사별로 다시 합쳐 conviction 합이 큰 클래스), MultiManager가 금액이 가장 큰 클래스(금액은 클래스 합산)다. 풋옵션 행은 MultiManager 금액에 넣지 않는다. 보유자 수·신규매수 수 문턱은 클래스 중 최대값으로 본다. 두 규칙은 `ROW_NUMBER`·`LIMIT` 전에 적용하고, 복제(`SingleManagerClone`)에는 적용하지 않는다.
+- **엔진** (`engine.run_backtest`): 벤치마크(SPY) 가격이 있는 날만 영업일로 순회하므로 `--start`/`--end`는 SPY 가격 범위로 잘린다. 매 영업일 전략을 호출해 target이 바뀐 날만 리밸런싱하고 turnover × `cost_bps`(편도)를 차감한다(첫 진입 포함). 그날 가격이 없는 종목은 직전 가격으로 채워 수익률 0으로 둔다. 다만 그날까지의 마지막 가격이 `STALE_DAYS`(10 달력일)보다 오래됐거나 가격이 아예 없는 종목은 target에서 빼고 남은 종목에 원래 비중 합을 다시 나눈다 (상장폐지·인수, `drop_stale`). 보유에서 빠진 종목의 직전 가격은 그날 버리므로, 다시 산 날은 처음 사는 날처럼 그날 수익을 받지 않는다. 분기 첫 영업일 비중을 `holdings_log` → `backtest_holdings`에 저장한다.
 - **복제 전략의 옵션 처리** (`strategies/single_manager.py`): 최신 제출물의 행을 ticker별로 합산해 금액 비율로 비중을 매긴다. 콜옵션은 기초자산 명목금액의 롱 노출로 포함하고, 풋은 롱 노출이 아니므로 제외한다. 금액 단위가 틀린 제출자(Druckenmiller)도 제출물 안 상대 비중이라 영향이 없다.
 - **기본 suite** (`runner.default_suite`, 8개): `SingleManagerClone(Buffett)`, `SingleManagerClone(Druckenmiller)`, `ConsensusTopK(3,10)`, `ScoreTopK(40)`, `ConvictionFollow(3)`, `NewBuyOnly(2,15)`, `Ensemble`(ConsensusTopK(3,10) 0.5 / ConsensusTopK(2,15) 0.5), `MultiManager`(Burry·Dalio·Druckenmiller·Tepper, top 20). 파라미터는 2026-09 탐색(`docs/backtest-optimization-2026-09.md`)의 계열별 최적값이고, `cli.py` registry와 SPA `hf-data.js:STRATEGY_TYPES`의 기본값도 같게 맞춘다. 집계 테이블을 읽는 전략은 분기를 `strategy.latest_public_period`로 고른다(매니저 전원 제출 뒤).
 - **전략 이름 해석** (`runner.strategy_by_name`, `backtest --strategy`·`targets --strategy` 공용): `ScoreTopK`, `ConsensusTopK`, `ConvictionFollow`, `NewBuyOnly`, `MultiManager`(파라미터 없는 이름은 `default_suite()`의 같은 type 전략을 쓴다 — 기본값이 suite 한 곳에만 있게), `SingleManagerClone(<label>)`, `MultiManager(<label>,<label>[:top_k])`. `SingleManagerClone`·`Ensemble`은 파라미터 없는 이름으로 못 부르고, `Ensemble`은 `--all`로만 실행된다.
@@ -56,7 +59,7 @@ EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 �
 - **SPA** (`web/static/`): 빌드 단계가 없다. `index.html`이 CDN에서 React 18 UMD와 Babel standalone을 받고 `hf-data.js` → `tweaks-panel.jsx` → `hf-components.jsx` → 화면별 `.jsx` → `hf-app.jsx`(hash router, 기본 `#/home`) 순서로 로드한다. 파일끼리는 각 파일 끝 `Object.assign(window, {...})`로 노출한 전역을 쓴다.
   - `hf-data.js:bootstrapFromJson`이 JSON 9개를 `Promise.all`로 받아 전역(`META`, `QUARTERS`, `STOCKS`, `MANAGERS`, `HOLDINGS`, `HOLDINGS_UNMAPPED`, `BACKTESTS`, `LLM_SUMMARY`, `TARGETS`)을 채운다. 일봉은 `fetchDailyPx(ticker)`로 필요할 때만 받는다.
   - Plan 화면(`hf-plan.jsx`, `#/plan`)은 `TARGETS`만 읽어 알고리즘 선정 표(최신 run 지표, 권장 배지) → 선택 전략의 실행 계획(목표 비중, buy/keep/sell, 다음 리밸런스일) → 주의사항(GOOG+GOOGL 동일 회사, ETF 포함)을 표시한다. `targets.json`이 없으면 export 안내만 낸다.
-  - Backtest 화면(`hf-backtest.jsx:matchBackendRun`)은 `BACKTESTS`에서 `name`이 전략 type으로 시작하는 첫 run(=최신)을 쓴다. `SingleManagerClone`은 매니저 전체 이름의 마지막 단어가 `(…)` 안에 있어야 매칭된다. 못 찾으면 `hf-data.js:runStrategy` 브라우저 시뮬레이션(SIM 배지, KPI 비교 제외)으로 대신한다.
+  - Backtest 화면(`hf-backtest.jsx`)은 `BACKTESTS`에서 전략 이름(`name`)별 첫 run(=최신)을 하나씩 칩으로 보여 준다. 브라우저 시뮬레이션은 없다 (2026-10-31 삭제). backend equity·benchEquity는 NAV 금액이라 화면에서 전략의 초기 NAV로 나눠 시작 1.00×로 그린다.
 
 ## llm (Phase 4+ / 5)
 
@@ -68,11 +71,11 @@ EDGAR 요청은 `edgar_client.py`가 초당 8건으로 제한하고(SEC 한도 �
 ## report / legacy
 
 - `cli.py:report` — Quarto는 렌더 중 cwd를 `reports/quarto/`로 바꾸므로 CLI가 `.env`를 직접 읽어 환경변수로 넘기고 `DUCKDB_PATH`를 절대경로로 바꾼다. 분기는 `-P` 인자 대신 `THIRTEEN_F_QUARTER` 환경변수로 전달하고, qmd 셀은 `_common.py:resolve_quarter`로 읽는다. `04_backtest.qmd`는 누적된 run 중 전략별 최신 run만 표·차트로 비교한다.
-- `_legacy_dashboard/` — Streamlit이 의존성에서 빠져 페이지는 실행되지 않는다. `charts.py`(plotly)만 Quarto `01_overview.qmd`·`04_backtest.qmd`가 import한다.
+- `reports/quarto/_charts.py` — Quarto `01_overview.qmd`·`04_backtest.qmd` 전용 plotly 차트. Phase 4 Streamlit 대시보드는 2026-10-31에 삭제했다.
 
 ## 설계 문서 지도
 
-- `docs/superpowers/specs/2026-05-20-13f-tracker-design.md` — Phase 0~4 설계 기록. §4.2 스키마(`init_db.py`와 동일), §5 수집, §6 시그널, §7 백테스트, §10 Phase별 DoD. 구현 후 달라진 점(SPA 전환·`dashboard` 제거·MultiManager·Stooq 구현·`analysis.toml` 미사용)은 문서 상단 "현행화 노트"에 있고, 본문의 해당 절(§3.2, §7.2, §8 등)은 설계 당시 그대로다.
+- `docs/superpowers/specs/2026-05-20-13f-tracker-design.md` — Phase 0~4 설계 기록. §4.2 스키마(`init_db.py`와 동일), §5 수집, §6 시그널, §7 백테스트, §10 Phase별 DoD. 구현 후 달라진 점(SPA 전환·`dashboard` 제거·MultiManager·Stooq 구현·분석 설정 파일 미사용)은 문서 상단 "현행화 노트"에 있고, 본문의 해당 절(§3.2, §7.2, §8 등)은 설계 당시 그대로다.
 - `docs/superpowers/plans/2026-05-21-13f-tracker.md` — Phase 0~4 TDD step. Chunk 1~5 = Phase 0~4, Task N.x = Phase N.
 - `docs/superpowers/plans/2026-05-22-13f-frontend-migration.md` — Phase 5. Chunk A 백엔드 기반 · B 정적 서빙 · C 프론트 데이터 연결 · D MultiManager + Ask LLM · E 정리.
 - `참고/` — 구현 전 사전 조사 노트 (`PLAN.md`, `edgar_notes.md`, `schema.md`).

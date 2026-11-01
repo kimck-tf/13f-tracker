@@ -3,14 +3,18 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date
+from collections.abc import Iterable
+from datetime import date, timedelta
 from pathlib import Path
-from typing import Iterable
 
 import duckdb
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+OVERLAP_DAYS = 10  # 증분 다운로드 때 마지막 저장일보다 이만큼 앞에서부터 받아 겹치는 구간을 만든다
+ADJ_TOLERANCE = 1e-4  # 겹치는 날의 값이 이 비율 안에서 같으면 같은 값으로 본다
+BATCH_SIZE = 50  # yfinance 한 번에 받는 ticker 수
 
 
 def to_stooq_ticker(yf_ticker: str) -> str:
@@ -63,8 +67,9 @@ def _stooq_download(ticker: str, start: date) -> pd.DataFrame | None:
     if not api_key:
         return None
     try:
-        import httpx
         from io import StringIO
+
+        import httpx
 
         stooq_t = to_stooq_ticker(ticker)
         url = (
@@ -127,6 +132,84 @@ def _upsert_prices(
     return len(rows)
 
 
+def _last_price_dates(conn: duckdb.DuckDBPyConnection) -> dict[str, date]:
+    """ticker별 저장된 마지막 가격 날짜."""
+    return dict(conn.execute("SELECT ticker, MAX(date) FROM prices GROUP BY ticker").fetchall())
+
+
+def _yf_batch(tickers: list[str], start: date) -> dict[str, pd.DataFrame]:
+    """yfinance 한 번의 요청으로 여러 ticker를 받아 ticker별 단일 레벨 컬럼 DataFrame으로 나눈다.
+
+    값이 전부 NaN인 ticker(조회 실패·상장 전)는 빼고, 요청 자체가 실패하면 빈 dict를 돌려준다 —
+    빠진 ticker는 호출자가 단일 경로(`_fetch`)로 다시 받는다.
+    """
+    try:
+        import yfinance as yf
+
+        df = yf.download(
+            tickers,
+            start=start.isoformat(),
+            group_by="ticker",
+            auto_adjust=False,
+            threads=True,
+            progress=False,
+        )
+    except Exception as e:
+        logger.warning("yfinance batch failed for %d tickers: %s", len(tickers), e)
+        return {}
+    if df is None or df.empty or not isinstance(df.columns, pd.MultiIndex):
+        return {}
+    out: dict[str, pd.DataFrame] = {}
+    present = set(df.columns.get_level_values(0))
+    for t in tickers:
+        if t not in present:
+            continue
+        sub = df[t].dropna(how="all")
+        if not sub.empty:
+            out[t] = sub
+    return out
+
+
+def _fetch(ticker: str, start: date) -> pd.DataFrame | None:
+    """yfinance, 비어 있으면 Stooq. 둘 다 비면 None."""
+    df = _yfinance_download(ticker, start)
+    if df is None or df.empty:
+        df = _stooq_download(ticker, start)
+    if df is None or df.empty:
+        return None
+    return df
+
+
+def _overlap_pairs(
+    conn: duckdb.DuckDBPyConnection, ticker: str, df: pd.DataFrame
+) -> list[tuple[float, float, float, float]]:
+    """새로 받은 df와 DB에 모두 있는 날의 (새 close, 새 adj_close, DB close, DB adj_close), 날짜순.
+
+    새 값이 NaN인 날(확정 전 거래일)과 새 값·DB 값이 0 이하인 날은 뺀다.
+    """
+    first = df.index.min().date()
+    stored = {
+        d: (c, a)
+        for d, c, a in conn.execute(
+            "SELECT date, close, adj_close FROM prices WHERE ticker = ? AND date >= ?",
+            (ticker, first),
+        ).fetchall()
+    }
+    pairs: list[tuple[float, float, float, float]] = []
+    for idx, row in df.sort_index().iterrows():
+        d = idx.date()
+        new_close, new_adj = row.get("Close"), row.get("Adj Close", row.get("Close"))
+        if d not in stored or pd.isna(new_close) or pd.isna(new_adj):
+            continue
+        if new_close <= 0 or new_adj <= 0:
+            continue
+        db_close, db_adj = stored[d]
+        if not db_close or not db_adj or db_close <= 0 or db_adj <= 0:
+            continue
+        pairs.append((float(new_close), float(new_adj), float(db_close), float(db_adj)))
+    return pairs
+
+
 def download_prices(
     conn: duckdb.DuckDBPyConnection,
     tickers: Iterable[str],
@@ -134,15 +217,74 @@ def download_prices(
     failure_log: Path | None = None,
 ) -> dict[str, int]:
     """Download daily prices for tickers; return {ticker: row_count}.
+
+    이미 가격이 있는 ticker는 마지막 저장일 `OVERLAP_DAYS`일 전부터만 받는다.
+    겹치는 날이 모두 같으면 그대로 덮어쓰고, 모두 한 배율로 달라졌으면(배당·분할의
+    소급 조정) 그 ticker의 저장 이력 전체를 같은 배율로 재스케일한 뒤 덮어쓴다.
+    그 밖(데이터 정정, 저장 이력 안의 단절)이면 `start`부터 전체를 다시 받는다.
+    `start`가 저장된 가장 이른 가격보다 앞이면(수집 범위를 앞당김) 전 종목을 `start`부터 받는다.
+    yfinance 요청은 fetch 시작일이 같은 ticker끼리 `BATCH_SIZE`개씩 묶어 보내고, 배치 결과에 없는
+    ticker만 단일 경로(yfinance → Stooq)로 다시 받는다.
     Tickers with no data after both yfinance and Stooq are appended to failure_log.
     """
     results: dict[str, int] = {}
     failed: list[str] = []
-    for t in sorted(set(t for t in tickers if t)):
-        df = _yfinance_download(t, start)
-        if df is None or df.empty:
-            df = _stooq_download(t, start)
-        if df is None or df.empty:
+    last_dates = _last_price_dates(conn)
+    first_row = conn.execute("SELECT MIN(date) FROM prices").fetchone()
+    stored_first = first_row[0] if first_row else None
+    backfill = stored_first is not None and start < stored_first - timedelta(days=OVERLAP_DAYS)
+    if backfill:
+        logger.info("start %s precedes stored prices (%s); fetching every ticker from start",
+                    start, stored_first)
+    todo = sorted(set(t for t in tickers if t))
+    fetch_start = {
+        t: start
+        if backfill or last_dates.get(t) is None
+        else last_dates[t] - timedelta(days=OVERLAP_DAYS)
+        for t in todo
+    }
+    by_start: dict[date, list[str]] = {}
+    for t in todo:
+        by_start.setdefault(fetch_start[t], []).append(t)
+    batched: dict[str, pd.DataFrame] = {}
+    for s, group in by_start.items():
+        for i in range(0, len(group), BATCH_SIZE):
+            batched.update(_yf_batch(group[i:i + BATCH_SIZE], s))
+    for t in todo:
+        last = last_dates.get(t)
+        df = batched.get(t)
+        if df is None:
+            df = _fetch(t, fetch_start[t])
+        if df is not None and last is not None:
+            pairs = _overlap_pairs(conn, t, df)
+            if pairs:
+                ratios = [(na / da, nc / dc) for nc, na, dc, da in pairs]
+                r_adj, r_close = ratios[-1]
+
+                def same(x: float, y: float) -> bool:
+                    return abs(x / y - 1) <= ADJ_TOLERANCE
+
+                if all(same(ra, 1.0) and same(rc, 1.0) for ra, rc in ratios):
+                    pass  # 겹치는 날이 모두 같다 — 그대로 덮어쓴다
+                elif len(ratios) >= 2 and all(
+                    same(ra, r_adj) and same(rc, r_close) for ra, rc in ratios
+                ):
+                    # 배당·분할의 소급 조정은 이력 전체에 같은 배율이다 (겹치는 날이 하루뿐이면
+                    # 조정과 데이터 정정을 구별할 수 없어 아래의 재다운로드로 간다).
+                    # 겹치는 날은 뒤의 upsert가 덮고, 새 데이터가 NaN이라
+                    # 덮이지 않는 날도 같은 배율로 맞춰진다
+                    conn.execute(
+                        "UPDATE prices SET adj_close = adj_close * ?, open = open * ?, "
+                        "high = high * ?, low = low * ?, close = close * ? WHERE ticker = ?",
+                        (r_adj, r_close, r_close, r_close, r_close, t),
+                    )
+                    logger.info(
+                        "Rescaled %s history (adj x%.6f, close x%.6f)", t, r_adj, r_close
+                    )
+                else:
+                    logger.info("Overlap for %s disagrees; refetching from %s", t, start)
+                    df = _fetch(t, start)
+        if df is None:
             logger.error("Both sources failed for %s", t)
             failed.append(t)
             results[t] = 0

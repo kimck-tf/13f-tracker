@@ -5,12 +5,12 @@ import pytest
 
 from scripts.init_db import init_db
 from thirteen_f.collect.cusip_mapper import (
-    fetch_cache,
-    upsert_mapping,
-    fill_missing,
-    _pick_us_primary,
     _normalize_ticker,
     _openfigi_batch,
+    _pick_us_primary,
+    fetch_cache,
+    fill_missing,
+    upsert_mapping,
 )
 
 
@@ -40,7 +40,10 @@ def test_upsert_and_fetch(db_path):
 
 def test_fill_missing_uses_cache_first(db_path):
     conn = duckdb.connect(str(db_path))
-    upsert_mapping(conn, [{"cusip": "037833100", "ticker": "AAPL", "figi": "", "name": "Apple", "is_etf": False}])
+    upsert_mapping(
+        conn,
+        [{"cusip": "037833100", "ticker": "AAPL", "figi": "", "name": "Apple", "is_etf": False}],
+    )
     # OpenFIGI mock — 호출되지 않아야 함
     with patch("thirteen_f.collect.cusip_mapper._openfigi_batch") as mock_api:
         fill_missing(conn, ["037833100"], api_key=None)
@@ -101,7 +104,10 @@ def test_fill_missing_calls_openfigi_for_misses(db_path):
     conn = duckdb.connect(str(db_path))
     with patch("thirteen_f.collect.cusip_mapper._openfigi_batch") as mock_api:
         mock_api.return_value = [
-            {"cusip": "037833100", "ticker": "AAPL", "figi": "BBG0", "name": "Apple Inc", "is_etf": False}
+            {
+                "cusip": "037833100", "ticker": "AAPL", "figi": "BBG0",
+                "name": "Apple Inc", "is_etf": False,
+            }
         ]
         fill_missing(conn, ["037833100"], api_key=None)
     # 캐시에 적재 확인

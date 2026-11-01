@@ -32,6 +32,7 @@ function PlanScreen({ route }) {
   })();
   const tickers = new Set(selected.positions.map(p => p.ticker));
   const etfs = selected.positions.filter(p => p.isEtf);
+  const dropped = selected.dropped || [];
   const alphabet = ["GOOG", "GOOGL"].filter(t => tickers.has(t));
   const alphabetWeight = selected.positions.filter(p => alphabet.includes(p.ticker)).reduce((a, p) => a + p.weight, 0);
 
@@ -89,7 +90,7 @@ function PlanScreen({ route }) {
         </div>
         <div className="dash-kpis">
           <Stat label="DATA QUARTER" value={periodLabel} sub={selected.public_since ? `공개 ${selected.public_since}` : "13F 없음"} />
-          <Stat label="NEXT REBALANCE" value={selected.next_rebalance || "—"} sub="분기말 + 45일 (예상)" accent />
+          <Stat label="NEXT REBALANCE" value={selected.next_rebalance || "—"} sub="분기말 + 45일, 주말·연방 공휴일 다음 영업일" accent />
           <Stat label="TARGET NAMES" value={selected.positions.length} sub="동일가중 목표" />
           <Stat label="BUY" value={buys.length} sub="직전 목록에 없던 종목" />
           <Stat label="KEEP" value={selected.positions.length - buys.length} sub="직전 목록에도 있던 종목" />
@@ -107,7 +108,7 @@ function PlanScreen({ route }) {
             rowKey={r => r.ticker}
             cols={[
               { key: "action", label: "ACTION", w: 70, render: r => <Badge kind={r.action === "buy" ? "NEW" : "HOLD"}>{r.action === "buy" ? "BUY" : "KEEP"}</Badge>, value: r => r.action },
-              { key: "ticker", label: "TICKER", w: 90, render: r => <span><button className="hf-link mono b" onClick={(e) => { e.stopPropagation(); navigate("/stocks/" + r.ticker); }}>{r.ticker}</button>{r.isEtf && <span className="hf-badge sm plan-etf">ETF</span>}</span>, value: r => r.ticker },
+              { key: "ticker", label: "TICKER", w: 90, render: r => <span><button className="hf-link mono b" onClick={(e) => { e.stopPropagation(); navigate("/stocks/" + r.ticker); }}>{r.ticker}</button>{r.isEtf && <span className="hf-badge sm plan-etf">ETF</span>}{r.priceStale && <span className="hf-badge sm plan-etf">STALE</span>}</span>, value: r => r.ticker },
               { key: "name", label: "COMPANY", flex: 1.4, render: r => <span className="hf-tx">{r.name || "—"}</span>, value: r => r.name },
               { key: "sector", label: "SECTOR", w: 130, render: r => sectorPill(r.sector), value: r => r.sector },
               { key: "weight", label: "TARGET %", w: 90, align: "right", render: r => <span className="mono num b">{fmtPct(r.weight, { decimals: 1 })}</span>, value: r => r.weight },
@@ -125,7 +126,7 @@ function PlanScreen({ route }) {
                 rowKey={r => r.ticker}
                 cols={[
                   { key: "action", label: "ACTION", w: 70, sortable: false, render: () => <Badge kind="EXIT">SELL</Badge> },
-                  { key: "ticker", label: "TICKER", w: 90, render: r => <button className="hf-link mono b" onClick={(e) => { e.stopPropagation(); navigate("/stocks/" + r.ticker); }}>{r.ticker}</button>, value: r => r.ticker },
+                  { key: "ticker", label: "TICKER", w: 90, render: r => <span><button className="hf-link mono b" onClick={(e) => { e.stopPropagation(); navigate("/stocks/" + r.ticker); }}>{r.ticker}</button>{r.priceStale && <span className="hf-badge sm plan-etf">STALE</span>}</span>, value: r => r.ticker },
                   { key: "name", label: "COMPANY", flex: 1.4, render: r => <span className="hf-tx">{r.name || "—"}</span>, value: r => r.name },
                   { key: "prev", label: "PREV %", w: 80, align: "right", render: r => <span className="mono num">{fmtPct(r.prevWeight, { decimals: 1 })}</span>, value: r => r.prevWeight },
                   { key: "px", label: "LAST CLOSE", w: 100, align: "right", render: r => <span className="mono num">{r.lastClose != null ? "$" + r.lastClose.toFixed(2) : "—"}</span>, value: r => r.lastClose ?? 0 },
@@ -143,6 +144,9 @@ function PlanScreen({ route }) {
             )}
             {etfs.length > 0 && (
               <li><span className="plan-warn">ETF가 종목으로 들어 있습니다: {etfs.map(p => p.ticker).join(", ")}</span> — 거장이 13F에 담은 지수 상품이라 그대로 두면 지수를 {fmtPct(etfs.reduce((a, p) => a + p.weight, 0), { decimals: 0 })} 편입하는 셈입니다.</li>
+            )}
+            {dropped.length > 0 && (
+              <li><span className="plan-warn">가격이 {data.staleDays}일 넘게 없어 목록에서 뺀 종목: {dropped.join(", ")}</span> — 상장폐지·인수 가능성이 있습니다. 백테스트도 같은 규칙으로 빼고 남은 종목에 비중을 나눕니다.</li>
             )}
             <li>목록은 그 분기 13F를 추적 매니저 전원이 제출한 날(보통 2·5·8·11월 중순)에만 바뀝니다. 그 사이에는 매매할 일이 없고, 교체 시 <b>SELL 목록 매도 → BUY 목록 매수 → 전 종목 동일 비중</b>으로 맞춥니다.</li>
             <li>백테스트는 2024-05 이후 분기 신호 10번짜리 표본이고 편도 10bp 비용만 가정했습니다(슬리피지·세금 없음). 표의 수치를 기대 수익으로 읽지 마세요. 근거와 한계는 <span className="mono">docs/backtest-optimization-2026-09.md</span>.</li>

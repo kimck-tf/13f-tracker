@@ -1,7 +1,7 @@
 """Cloning quality score = simple arithmetic mean of holders' cloning_score_weight. Spec §6.1."""
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 
 def cloning_quality_score(weights: Iterable[float]) -> float:

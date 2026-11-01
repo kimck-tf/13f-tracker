@@ -2,13 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from thirteen_f.core.config import Settings, load_settings
+from thirteen_f.core.config import load_settings
 
 
 def test_settings_loads_user_agent(monkeypatch, tmp_path):
     env_file = tmp_path / ".env"
     env_file.write_text('SEC_USER_AGENT="Test User test@example.com"\n')
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SEC_USER_AGENT", raising=False)
     settings = load_settings()
     assert settings.sec_user_agent == "Test User test@example.com"
 

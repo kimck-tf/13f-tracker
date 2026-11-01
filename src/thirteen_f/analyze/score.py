@@ -46,20 +46,14 @@ def weighted_total(
     )
 
 
-def compute_total_scores(
-    conn: duckdb.DuckDBPyConnection, weights: ScoreWeights, manager_count: int | None = None
-) -> int:
+def compute_total_scores(conn: duckdb.DuckDBPyConnection, weights: ScoreWeights) -> int:
     """consensus_quarterly + signals_quarterly + managers를 결합해 total_scores 적재.
 
-    consensus_score = consensus_quarterly.holder_count / manager_count  (DRY: 이미 집계된 값 활용)
+    consensus_score = consensus_quarterly.holder_count / 그 분기에 유효 필링을 낸 거장 수
     conviction_score = signals_quarterly conviction 평균 (보유 거장)
     continuity_score = signals_quarterly continuity 평균
     cloning_quality_score = managers.cloning_score_weight 단순 평균 (보유 거장만)
     """
-    # manager_count를 호출자가 지정하지 않으면 DB에서 동적 derive
-    if manager_count is None:
-        manager_count = conn.execute("SELECT COUNT(*) FROM managers").fetchone()[0] or 1
-
     conn.execute("DELETE FROM total_scores")
     conn.execute(
         """
@@ -73,26 +67,30 @@ def compute_total_scores(
             JOIN managers m ON s.cik = m.cik
             WHERE s.change_type != 'exit'
             GROUP BY s.period_of_report, s.cusip
+        ),
+        filers AS (
+            -- 분모는 명단 전체가 아니라 그 분기에 유효 필링을 낸 거장 수
+            SELECT period_of_report, COUNT(DISTINCT cik) AS n
+            FROM filings
+            WHERE superseded_by IS NULL
+            GROUP BY period_of_report
         )
         SELECT a.period_of_report, a.cusip,
                cm.ticker,
-               (c.holder_count * 1.0 / ?) AS consensus_score,
+               (c.holder_count * 1.0 / fl.n) AS consensus_score,
                a.conviction_s,
                a.continuity_s,
                a.cloning_quality_s,
-               (c.holder_count * 1.0 / ?) * ?
+               (c.holder_count * 1.0 / fl.n) * ?
                + COALESCE(a.conviction_s, 0) * ?
                + COALESCE(a.continuity_s, 0) * ?
                + COALESCE(a.cloning_quality_s, 0) * ? AS total_score
         FROM agg a
         JOIN consensus_quarterly c
           ON c.period_of_report = a.period_of_report AND c.cusip = a.cusip
+        JOIN filers fl ON fl.period_of_report = a.period_of_report
         LEFT JOIN cusip_ticker_map cm ON a.cusip = cm.cusip
         """,
-        (
-            manager_count, manager_count,
-            weights.consensus, weights.conviction,
-            weights.continuity, weights.cloning_quality,
-        ),
+        (weights.consensus, weights.conviction, weights.continuity, weights.cloning_quality),
     )
     return conn.execute("SELECT COUNT(*) FROM total_scores").fetchone()[0]

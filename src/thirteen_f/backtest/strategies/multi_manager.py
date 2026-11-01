@@ -12,14 +12,15 @@ from datetime import date
 
 import duckdb
 
-from thirteen_f.backtest.strategy import Strategy
+from thirteen_f.backtest.strategy import NON_COMMON_CUSIPS_SQL, Strategy
 
 
 class MultiManager(Strategy):
     """Aggregate top holdings from multiple managers (lookahead-safe).
 
     Each manager contributes their latest 13F-HR (as of ``as_of_date``).
-    Holdings are summed by ticker (across managers), sorted by total USD value,
+    Holdings are summed by issuer (first 6 CUSIP chars, across managers and share
+    classes; ETFs excluded), sorted by total USD value,
     and the top ``top_k`` tickers form the equal-weight (or by-value) portfolio.
     Manager periods may differ — that's intentional (each uses their freshest data).
 
@@ -68,14 +69,31 @@ class MultiManager(Strategy):
                     PARTITION BY f.cik
                     ORDER BY f.period_of_report DESC, f.filed_at DESC
                 ) = 1
+            ),
+            by_class AS (
+                SELECT m.ticker, SUBSTR(h.cusip, 1, 6) AS issuer,
+                       SUM(h.value_usd) AS class_value,
+                       BOOL_OR(nc.cusip IS NOT NULL) AS non_common
+                FROM holdings h
+                JOIN latest l ON l.accession_no = h.accession_no
+                JOIN cusip_ticker_map m ON m.cusip = h.cusip
+                LEFT JOIN ({NON_COMMON_CUSIPS_SQL}) nc ON nc.cusip = h.cusip
+                WHERE m.ticker IS NOT NULL
+                  AND h.value_usd > 0
+                  AND UPPER(h.put_call) <> 'PUT'  -- 풋은 보유가 아니다
+                  AND COALESCE(m.is_etf, FALSE) = FALSE
+                GROUP BY m.ticker, SUBSTR(h.cusip, 1, 6)
+            ),
+            by_issuer AS (
+                -- 발행사(CUSIP 앞 6자리) 합산 금액. 대표 티커는 보통주 중 금액이 가장 큰 클래스
+                -- (워런트·권리는 뒤로)
+                SELECT FIRST(ticker ORDER BY non_common, class_value DESC, ticker) AS ticker,
+                       SUM(class_value) AS total_value
+                FROM by_class
+                GROUP BY issuer
             )
-            SELECT m.ticker, SUM(h.value_usd) AS total_value
-            FROM holdings h
-            JOIN latest l ON l.accession_no = h.accession_no
-            JOIN cusip_ticker_map m ON m.cusip = h.cusip
-            WHERE m.ticker IS NOT NULL
-              AND h.value_usd > 0
-            GROUP BY m.ticker
+            SELECT ticker, total_value
+            FROM by_issuer
             ORDER BY total_value DESC
             LIMIT ?
             """,

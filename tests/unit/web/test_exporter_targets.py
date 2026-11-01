@@ -100,6 +100,10 @@ def test_export_targets_marks_buy_keep_and_sell_against_previous_list(conn, tmp_
 
 
 def test_export_targets_flags_etf_positions(conn, tmp_path: Path):
+    conn.execute(  # 가격이 없으면 매매할 수 없어 목록에서 빠진다
+        "INSERT INTO prices (ticker, date, close, adj_close) "
+        "VALUES ('SPY', DATE '2024-08-30', 500, 500)"
+    )
     export_targets(conn, tmp_path, as_of=date(2024, 9, 1))
     clone = _by_name(_load(tmp_path), "SingleManagerClone(Buffett)")
     spy = next(p for p in clone["positions"] if p["ticker"] == "SPY")
@@ -152,3 +156,37 @@ def test_next_rebalance_rolls_weekend_deadline_to_monday():
     # 2026-09-30 + 45일 = 2026-11-14(토) → 11-16(월)
     assert _next_rebalance(date(2026, 6, 30)) == date(2026, 11, 16)
     assert _next_rebalance(date(2024, 6, 30)) == date(2024, 11, 14)
+    # 2025-12-31 + 45일 = 2026-02-14(토) → 02-16(월)은 Presidents' Day → 02-17(화)
+    assert _next_rebalance(date(2025, 9, 30)) == date(2026, 2, 17)
+
+
+def test_export_targets_flags_stale_prices_relative_to_market_last_date(conn, tmp_path: Path):
+    """기준은 '오늘'이 아니라 prices의 마지막 날(08-30) — CCC는 07-01이 마지막이라 stale,
+    AAA·BBB는 아니다. 가격이 아예 없는 종목(SPY)은 백테스트처럼 목록에서 빠진다(dropped)."""
+    conn.execute(
+        "INSERT INTO prices (ticker, date, close, adj_close) "
+        "VALUES ('CCC', DATE '2024-07-01', 10.0, 10.0)"
+    )
+    export_targets(conn, tmp_path, as_of=date(2024, 10, 15))
+    data = _load(tmp_path)
+    assert data["staleDays"] == 10
+    cons = _by_name(data, "ConsensusTopK(3,10)")
+    stale = {p["ticker"]: p["priceStale"] for p in cons["positions"]}
+    assert stale == {"AAA": False, "BBB": False}
+    assert cons["sells"][0]["ticker"] == "CCC" and cons["sells"][0]["priceStale"] is True
+    clone = _by_name(data, "SingleManagerClone(Buffett)")
+    assert "SPY" not in {p["ticker"] for p in clone["positions"]} and clone["dropped"] == ["SPY"]
+
+
+def test_export_targets_drops_stale_tickers_like_the_backtest(conn, tmp_path: Path):
+    """현재 목록은 백테스트가 실제로 보유하는 목록이다 — 가격이 끊긴 BBB(07-01)는 빼고 AAA가 100%,
+    뺀 종목은 dropped로 따로 알린다."""
+    conn.execute("DELETE FROM prices WHERE ticker = 'BBB'")
+    conn.execute(
+        "INSERT INTO prices (ticker, date, close, adj_close) "
+        "VALUES ('BBB', DATE '2024-07-01', 5, 5)"
+    )
+    export_targets(conn, tmp_path, as_of=date(2024, 9, 1))
+    cons = _by_name(_load(tmp_path), "ConsensusTopK(3,10)")
+    assert [(p["ticker"], p["weight"]) for p in cons["positions"]] == [("AAA", pytest.approx(1.0))]
+    assert cons["dropped"] == ["BBB"]

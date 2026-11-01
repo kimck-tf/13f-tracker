@@ -20,7 +20,9 @@ def get_logger(name: str = "thirteen_f", log_dir: Path | None = None) -> logging
 
     if log_dir:
         log_dir.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_dir / f"{date.today().isoformat()}.log", encoding="utf-8")
+        file_handler = logging.FileHandler(
+            log_dir / f"{date.today().isoformat()}.log", encoding="utf-8"
+        )
         file_handler.setFormatter(
             logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
         )

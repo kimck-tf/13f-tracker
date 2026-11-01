@@ -3,10 +3,10 @@
 First run: requires real network + real SEC_USER_AGENT in .env.
 Subsequent runs: replays recorded cassette.
 """
+import os as _os
 from datetime import date
 from pathlib import Path
 
-import duckdb
 import pytest
 import vcr
 
@@ -14,13 +14,12 @@ from scripts.init_db import init_db
 from thirteen_f.collect.pipeline import run_collect
 from thirteen_f.core.config import Settings
 
-
 CASSETTE_DIR = Path(__file__).parent.parent / "fixtures" / "cassettes"
 CASSETTE_DIR.mkdir(parents=True, exist_ok=True)
 CASSETTE_NAME = "buffett_2024q1.yaml"
 
 # 기본: 'none' (재생만, 네트워크 X). 새 cassette 녹화 시 RECORD_VCR=1 명시.
-import os as _os
+
 _record_mode = "once" if _os.environ.get("RECORD_VCR") == "1" else "none"
 
 my_vcr = vcr.VCR(

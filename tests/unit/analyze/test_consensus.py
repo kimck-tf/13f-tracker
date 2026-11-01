@@ -34,7 +34,8 @@ def conn(tmp_path):
     # signals_quarterly에 가짜 change_type 데이터
     c.executemany(
         """INSERT INTO signals_quarterly
-           (cik, cusip, period_of_report, change_type, weight_pct, conviction_score, continuity_score)
+           (cik, cusip, period_of_report, change_type, weight_pct,
+            conviction_score, continuity_score)
            VALUES (?, '037833100', DATE '2024-03-31', ?, 1.0, 1.0, 0.5)""",
         [("0000000001", "new"), ("0000000002", "new"), ("0000000003", "hold")],
     )
@@ -43,7 +44,7 @@ def conn(tmp_path):
 
 
 def test_consensus_holder_count(conn):
-    n = compute_consensus(conn)
+    compute_consensus(conn)
     row = conn.execute(
         "SELECT holder_count, new_buy_count FROM consensus_quarterly WHERE cusip='037833100'"
     ).fetchone()

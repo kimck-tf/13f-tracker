@@ -6,7 +6,6 @@ from typing import Any
 
 from lxml import etree
 
-
 _UNIT_CHANGE_DATE = date(2023, 1, 3)  # Spec §5.3
 
 

@@ -6,7 +6,11 @@ from datetime import date
 
 import duckdb
 
-from thirteen_f.backtest.strategy import Strategy, latest_public_period
+from thirteen_f.backtest.strategy import (
+    NON_COMMON_CUSIPS_SQL,
+    Strategy,
+    latest_public_period,
+)
 
 
 class ConsensusTopK(Strategy):
@@ -25,15 +29,35 @@ class ConsensusTopK(Strategy):
         if latest_period is None:
             return {}
         rows = conn.execute(
-            """
-            SELECT t.ticker
-            FROM total_scores t
-            JOIN consensus_quarterly c
-              ON c.period_of_report = t.period_of_report AND c.cusip = t.cusip
-            WHERE t.period_of_report = ?
-              AND c.holder_count >= ?
-              AND t.ticker IS NOT NULL
-            ORDER BY t.total_score DESC NULLS LAST
+            f"""
+            WITH cand AS (
+                SELECT t.ticker, t.total_score, c.holder_count,
+                       SUBSTR(t.cusip, 1, 6) AS issuer, nc.cusip IS NOT NULL AS non_common
+                FROM total_scores t
+                JOIN consensus_quarterly c
+                  ON c.period_of_report = t.period_of_report AND c.cusip = t.cusip
+                LEFT JOIN cusip_ticker_map m ON m.cusip = t.cusip
+                LEFT JOIN ({NON_COMMON_CUSIPS_SQL}) nc ON nc.cusip = t.cusip
+                WHERE t.period_of_report = ?
+                  AND t.ticker IS NOT NULL
+                  AND COALESCE(m.is_etf, FALSE) = FALSE
+            ),
+            one_per_issuer AS (
+                -- 발행사(CUSIP 앞 6자리)당 한 클래스: 보통주 먼저(워런트·권리는 뒤로),
+                -- 그다음 total_score.
+                -- 보유자 수는 클래스 중 최대값으로 본다
+                SELECT ticker, total_score,
+                       MAX(holder_count) OVER (PARTITION BY issuer) AS issuer_holders
+                FROM cand
+                QUALIFY ROW_NUMBER() OVER (
+                    PARTITION BY issuer
+                    ORDER BY non_common, total_score DESC NULLS LAST, ticker
+                ) = 1
+            )
+            SELECT ticker
+            FROM one_per_issuer
+            WHERE issuer_holders >= ?
+            ORDER BY total_score DESC NULLS LAST
             LIMIT ?
             """,
             (latest_period, self.min_holders, self.top_k),

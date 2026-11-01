@@ -11,7 +11,7 @@
 | `holdings` | `(accession_no, cusip, title_of_class, put_call)` | `value_usd`는 달러 단위. `put_call = ''`이면 옵션이 아닌 보유 |
 | `cusip_ticker_map` | `cusip` | `ticker IS NULL` = OpenFIGI 매핑 실패. `sector`/`industry`는 `scripts/supplement_sector.py` 실행 전엔 `''` |
 | `prices` | `(ticker, date)` | 엔진은 `adj_close`, `export_stocks`는 분기말 `close`를 쓴다 |
-| `signals_quarterly` | `(cik, cusip, period_of_report)` | `change_type`, `weight_pct`, conviction/continuity 점수 |
+| `signals_quarterly` | `(cik, cusip, period_of_report)` | `change_type`, `weight_pct`, conviction/continuity 점수. `exit` 행은 청산한 분기에만 있고 `shares_change` = −직전 주식 수, `value_change_usd` = −직전 가치, `weight_pct` = 0 |
 | `consensus_quarterly` | `(period_of_report, cusip)` | `holder_count`, `new_buy_count`, `holder_ciks` |
 | `total_scores` | `(period_of_report, cusip)` | 4개 성분 점수 + `total_score` |
 | `backtest_runs` | `run_id` | uuid hex. `strategy_name` = `Strategy.name`, `params_json`, `cost_bps`, `benchmark` |
@@ -33,12 +33,12 @@ gitignore 대상이며 `uv run thirteen-f export`로 다시 만든다. SPA는 `/
 | `quarters.json` | `export_quarters` | `[{key: "2024Q2", label: "Q2'24", date: "2024-06-30"}]` | `QUARTERS`, `Q_LABELS`, `Q_DATES` |
 | `quarters_index.json` | `export_quarters` | `{"2024-03-31": 0, …}` | 사용하지 않음 (테스트만 검증) |
 | `managers.json` | `export_managers` | `Manager` 모델 (`id` = label 소문자, `avatar` = 이름 이니셜) | `MANAGERS`, `MGR_MAP` |
-| `stocks.json` | `export_stocks` | `[{t: ticker, n: 이름, s: sector, i: industry, px: [분기별 close 또는 null]}]` | `STOCKS`, `STOCK_MAP` |
+| `stocks.json` | `export_stocks` | `[{t: ticker, n: 이름, s: sector, i: industry, px: [분기별 close 또는 null], pxw: [시장 마지막 날로 끝나는 최근 12개 ISO 주의 주별 마지막 close, 가격이 없으면 []]}]` | `STOCKS`, `STOCK_MAP` |
 | `holdings.json` | `export_holdings` | `{<manager id>: {<ticker>: [분기별 보유 주식 수(백만 주)]}}` | `HOLDINGS` |
 | `holdings_unmapped.json` | `export_holdings` | `{<manager id>: {<cusip>: {name_of_issuer, shares: [...]}}}` | `HOLDINGS_UNMAPPED` (없으면 `{}`) |
-| `backtest.json` | `export_backtest` | `[{run_id, name, params, equity, dd, qrets, benchEquity, holdingsLog, metrics}]` — DB의 모든 run | `BACKTESTS` (없으면 `[]`) |
+| `backtest.json` | `export_backtest` | `[{run_id, name, params, costBps, inSuite, equity, dd, qrets, benchEquity, holdingsLog, metrics}]` — DB의 모든 run. `inSuite`는 기본 suite(`backtest --all`) 전략 이름이면 true — Backtest 화면은 이 run만 칩으로 쓴다 | `BACKTESTS` (없으면 `[]`) |
 | `prices/<TICKER>.json` | `export_prices_split` | `{date: [...], close: [...]}` 일봉 | `fetchDailyPx(ticker)` |
-| `targets.json` | `export_targets` | `{as_of, rule, recommended, strategies: [{name, type, period, public_since, next_rebalance, metrics, positions: [{ticker, weight, prevWeight, action: "buy"\|"keep", holders, holderIds, name, sector, isEtf, lastClose, lastCloseDate}], sells: [...]}]}` — 기본 suite 8전략의 **현재** 목표 비중(백테스트와 같은 `get_target_positions`)과 직전 목록(그 분기 공개 전날 기준) 대비 diff. `recommended`는 최신 run 중 Calmar 1위(평균 보유 8종목 이상) | `TARGETS` (없으면 `null`, Plan 탭이 안내 표시) |
+| `targets.json` | `export_targets` | `{as_of, rule, recommended, staleDays, strategies: [{name, type, period, public_since, next_rebalance, metrics, positions: [{ticker, weight, prevWeight, action: "buy"\|"keep", holders, holderIds, name, sector, isEtf, lastClose, lastCloseDate, priceStale}], sells: [...], dropped: [ticker]}]}` — 기본 suite 8전략의 **현재** 목표 비중(백테스트와 같은 `get_target_positions`)과 직전 목록(그 분기 공개 전날 기준) 대비 diff. `next_rebalance`는 다음 분기 13F 기한(분기말 + 45일, 토·일·미국 연방 공휴일이면 다음 영업일 — `core/dates.py:sec_13f_deadline`). `recommended`는 최신 run 중 Calmar 1위(평균 보유 8종목 이상). `priceStale`은 마지막 가격이 `prices` 전체의 마지막 날보다 `staleDays`(10)일 넘게 이르거나 가격이 없는 종목이다 — 현재 목록(positions)은 엔진과 같은 규칙(`engine.tradeable_at`)으로 그런 종목을 빼고 남은 종목에 비중을 다시 나누며, 뺀 종목은 `dropped`에 적는다. 직전 목록에서는 빼지 않아 SELL에 STALE로 남는다 | `TARGETS` (없으면 `null`, Plan 탭이 안내 표시) |
 | `llm_summary.json` | 없음 — 만드는 코드가 아직 없다 | — | `LLM_SUMMARY` (`{}`로 대체) |
 
 분기 배열(`px`, 보유 주식 수)의 인덱스는 `quarters.json` 순서와 같다.
@@ -50,7 +50,6 @@ gitignore 대상이며 `uv run thirteen-f export`로 다시 만든다. SPA는 `/
   - **CIK는 따옴표로 감싼 10자리 문자열로 쓴다.** PyYAML은 `cik: 0001061165`처럼 따옴표 없이 0~7 숫자로만 된 값을 8진수 int(287349)로 읽고, collect는 이런 값을 만나면 파일을 다시 쓰기 전에 `ValueError`로 멈춘다. 기존 항목 중 따옴표 없는 CIK는 8·9가 섞여 문자열로 읽히므로 `yaml.safe_dump`가 따옴표를 생략한 것이다.
   - collect는 실행할 때마다 이 파일을 `yaml.safe_dump`로 다시 쓴다 — 주석은 지워지고 키 순서는 유지된다. `cik`를 비워 두면 `company_tickers.json`으로 채우는데, 13F 전용 filer는 여기서 찾지 못하므로 직접 입력한다.
 - **`scoring.toml`** — `[weights]` consensus / conviction / continuity / cloning_quality, 합 1.0(±0.01).
-- **`analysis.toml`** — **읽는 코드가 없다.** 실제로 쓰이는 값은 diff threshold = `analyze --threshold`(기본 0.05), continuity 윈도우 = `analyze/continuity.py:WINDOW`(4), 컨센서스 최소 보유자 수 = 전략 생성자 인자(`ConsensusTopK(min_holders=…)` 등)다.
 
 ## 환경변수
 

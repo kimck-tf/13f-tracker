@@ -93,3 +93,21 @@ def test_targets_defaults_to_today(monkeypatch: pytest.MonkeyPatch) -> None:
     result = CliRunner().invoke(app, ["targets", "--strategy", "ScoreTopK"])
     assert result.exit_code == 0, result.output
     assert str(date.today()) in result.output
+
+
+def test_targets_drops_tickers_without_recent_prices_like_the_backtest(db: Path) -> None:
+    """엔진은 마지막 가격이 10일보다 오래된 종목을 빼고 나머지에 비중을 나눈다 — targets도 같게.
+    BBB의 마지막 가격(04-01)은 시장의 마지막 날(06-01)보다 두 달 이르다."""
+    c = duckdb.connect(str(db))
+    c.executemany(
+        "INSERT INTO prices (ticker, date, close, adj_close) VALUES (?, ?, 10.0, 10.0)",
+        [("AAA", date(2024, 6, 1)), ("BBB", date(2024, 4, 1))],
+    )
+    c.close()
+    result = CliRunner().invoke(
+        app, ["targets", "--strategy", "ConsensusTopK", "--as-of", "2024-06-03"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "AAA" in result.output and "100.0%" in result.output
+    dropped = next(ln for ln in result.output.splitlines() if "BBB" in ln)
+    assert "뺀" in dropped

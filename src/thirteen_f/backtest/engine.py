@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import date
-from typing import Iterable
+from collections.abc import Iterable
+from datetime import date, timedelta
 
 import duckdb
 
@@ -20,6 +20,10 @@ from thirteen_f.backtest.metrics import (
 from thirteen_f.backtest.strategy import BacktestResult, Strategy
 
 logger = logging.getLogger(__name__)
+
+# 마지막 가격이 이 기간(달력일)보다 오래된 종목은 상장폐지·인수로 보고 매매하지 않는다.
+# Plan 탭의 STALE 표시(web/exporter.py)도 같은 기준을 쓴다.
+STALE_DAYS = 10
 
 
 def _fetch_business_days(
@@ -49,6 +53,43 @@ def _fetch_prices_for_day(
         [d, *tickers],
     ).fetchall()
     return {r[0]: r[1] for r in rows if r[1] is not None}
+
+
+def drop_stale(
+    conn: duckdb.DuckDBPyConnection, target: dict[str, float], d: date
+) -> dict[str, float]:
+    """d까지의 마지막 가격이 STALE_DAYS보다 오래됐거나 가격이 없는 종목을 빼고, 남은 종목에
+    원래 비중 합(보통 1)을 다시 나눈다. 모두 빠지면 빈 dict(현금)."""
+    if not target:
+        return target
+    placeholders = ",".join("?" for _ in target)
+    rows = conn.execute(
+        f"SELECT ticker, MAX(date) FROM prices WHERE ticker IN ({placeholders}) AND date <= ? "
+        "GROUP BY ticker",
+        [*target, d],
+    ).fetchall()
+    cutoff = d - timedelta(days=STALE_DAYS)
+    kept = {t: target[t] for t, last in rows if last >= cutoff}
+    if len(kept) == len(target):
+        return target
+    total = sum(kept.values())
+    if total <= 0:
+        return {}
+    scale = sum(target.values()) / total
+    return {t: w * scale for t, w in kept.items()}
+
+
+def tradeable_at(
+    conn: duckdb.DuckDBPyConnection, target: dict[str, float], as_of: date
+) -> dict[str, float]:
+    """백테스트 밖(`targets`·Plan 탭)에서 엔진과 같은 `drop_stale`을 적용한다. 기준일은 as_of와
+    가격의 마지막 날 중 이른 날 — 가격 수집이 오래됐다고 전 종목을 빼지 않게. 가격이 하나도 없으면
+    판단할 근거가 없어 그대로 둔다."""
+    row = conn.execute("SELECT MAX(date) FROM prices").fetchone()
+    last = row[0] if row else None
+    if last is None:
+        return target
+    return drop_stale(conn, target, min(as_of, last))
 
 
 def run_backtest(
@@ -83,7 +124,7 @@ def run_backtest(
     from thirteen_f.core.dates import quarter_label
 
     for i, d in enumerate(business_days):
-        target = strategy.get_target_positions(as_of_date=d, conn=conn)
+        target = drop_stale(conn, strategy.get_target_positions(as_of_date=d, conn=conn), d)
         prices_today = _fetch_prices_for_day(
             conn, list(target.keys()) + list(current_weights.keys()) + [benchmark], d
         )
@@ -122,10 +163,14 @@ def run_backtest(
             if last_bench_price and p_b_t:
                 bench_value *= p_b_t / last_bench_price
 
-        # last_prices 업데이트: 오늘 가격 있는 종목만 갱신, 없는 종목은 직전 값 유지
+        # last_prices 업데이트: 오늘 가격 있는 종목만 갱신, 없는 종목은 직전 값 유지.
+        # 벤치마크(SPY)도 넣는다 — 복제 전략이 SPY를 보유하면 그 수익을 받아야 한다
         for t, p in prices_today.items():
-            if t != benchmark and p is not None:
+            if p is not None:
                 last_prices[t] = p
+        # 보유하지 않게 된 종목의 가격은 버린다 — 남겨 두면 다시 살 때 보유하지 않은 기간의
+        # 수익이 그날 한꺼번에 붙는다 (다시 산 첫날은 처음 사는 종목처럼 수익 0)
+        last_prices = {t: p for t, p in last_prices.items() if t in current_weights}
         last_bench_price = prices_today.get(benchmark, last_bench_price)
 
         nav_series.append((d, portfolio_value, bench_value, len(current_weights)))

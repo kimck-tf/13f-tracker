@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import duckdb
@@ -179,7 +179,9 @@ def test_export_prices_split_per_ticker(conn, tmp_path: Path):
 def test_export_holdings_cutoff_excludes_delinquent_filing(tmp_path: Path):
     """C4 보강: filed_at > q+180d delinquent filing은 export에서 제외되는지 검증."""
     from datetime import date
+
     import duckdb
+
     from scripts.init_db import init_db
     from thirteen_f.collect.loader import upsert_filing, upsert_holdings, upsert_manager
     from thirteen_f.web.exporter import export_holdings
@@ -244,7 +246,8 @@ def test_export_holdings_splits_mapped_and_unmapped(conn, tmp_path: Path):
     # Mapping coverage ≥ 85% (CLAUDE.md known issue)
     total_mapped = sum(len(v) for v in holdings.values())
     total_unmapped = sum(len(v) for v in unmapped.values())
-    coverage = total_mapped / (total_mapped + total_unmapped) if (total_mapped + total_unmapped) else 1.0
+    total = total_mapped + total_unmapped
+    coverage = total_mapped / total if total else 1.0
     assert coverage >= 0.5  # 2 mapped / 3 total = 66.7%
 
 
@@ -296,7 +299,8 @@ def test_export_backtest_writes_runs_with_holdings_and_metrics(conn, tmp_path: P
             (d, nav, bn),
         )
     conn.execute(
-        "INSERT INTO backtest_metrics VALUES ('r1', 0.10, 0.12, 1.5, 1.8, -0.05, 2.4, 0.66, 0.03, 0.04)"
+        "INSERT INTO backtest_metrics VALUES "
+        "('r1', 0.10, 0.12, 1.5, 1.8, -0.05, 2.4, 0.66, 0.03, 0.04)"
     )
     conn.execute(
         "INSERT INTO backtest_holdings VALUES ('r1', DATE '2024-01-02','AAPL',0.5)"
@@ -312,6 +316,7 @@ def test_export_backtest_writes_runs_with_holdings_and_metrics(conn, tmp_path: P
     assert run["run_id"] == "r1"
     assert run["name"] == "TestStrat"
     assert run["params"] == {"k": 1}
+    assert run["costBps"] == 10.0
     assert len(run["equity"]) == 2  # 2 quarters
     assert run["metrics"]["cagr"] == pytest.approx(0.12)
     assert run["metrics"]["hitRate"] == pytest.approx(0.66)
@@ -321,3 +326,39 @@ def test_export_backtest_writes_runs_with_holdings_and_metrics(conn, tmp_path: P
     assert run["holdingsLog"][0]["date"] == "2024-01-02"
     tickers = {h["ticker"] for h in run["holdingsLog"][0]["holdings"]}
     assert tickers == {"AAPL", "MSFT"}
+
+
+def test_export_stocks_includes_last_12_weekly_closes(conn, tmp_path: Path):
+    """pxw = MAX(prices.date)로 끝나는 최근 12 ISO 주의 주별 마지막 종가. 보간·노이즈 없음."""
+    conn.execute(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, name, sector, is_etf) "
+        "VALUES ('594918104', 'MSFT', 'Microsoft', 'Technology', FALSE)"
+    )
+    for i in range(100):  # 2024-03-23 ~ 2024-06-30, close = 1..100
+        d = date(2024, 6, 30) - timedelta(days=99 - i)
+        conn.execute(
+            "INSERT INTO prices (ticker, date, close, adj_close) VALUES ('MSFT', ?, ?, ?)",
+            (d, float(i + 1), float(i + 1)),
+        )
+    export_stocks(conn, tmp_path)
+    stocks = {s["t"]: s for s in json.loads((tmp_path / "stocks.json").read_text(encoding="utf-8"))}
+    msft = stocks["MSFT"]["pxw"]
+    assert len(msft) == 12 and msft[-1] == 100.0 and msft == sorted(msft)
+    assert msft[-2] == 93.0  # 직전 ISO 주(06-17~06-23)의 마지막 날 06-23 = 93
+    assert stocks["AAPL"]["pxw"] == [200.5]  # fixture의 06-28·06-30은 같은 ISO 주 → 1점
+
+
+def test_export_backtest_marks_runs_of_the_default_suite(conn, tmp_path: Path):
+    """Backtest 화면은 기본 suite(backtest --all) run만 칩으로 만든다 — 단일 실행 run을 구별한다."""
+    conn.executemany(
+        "INSERT INTO backtest_runs (run_id, strategy_name, params_json, start_date, end_date, "
+        "benchmark, cost_bps, created_at) VALUES (?, ?, '{}', DATE '2024-01-02', "
+        "DATE '2024-12-31', 'SPY', 10.0, NOW())",
+        [("r1", "ConsensusTopK(3,10)"), ("r2", "SingleManagerClone(Ackman)")],
+    )
+    export_backtest(conn, tmp_path)
+    data = json.loads((tmp_path / "backtest.json").read_text(encoding="utf-8"))
+    assert {r["name"]: r["inSuite"] for r in data} == {
+        "ConsensusTopK(3,10)": True,
+        "SingleManagerClone(Ackman)": False,
+    }

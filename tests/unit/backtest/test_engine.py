@@ -159,3 +159,89 @@ def test_benchmark_nav_tracks_spy_before_first_position(conn):
     )
     # SPY +0.05%/day, 252일 → 251번 상승
     assert result.metrics["bench_total_return"] == pytest.approx(1.0005 ** 251 - 1, rel=1e-6)
+
+
+def test_engine_drops_tickers_whose_prices_stopped(conn):
+    """MSFT 가격이 2024-06-30에 끊기면 10일 뒤부터 포지션에서 빠지고 비중은 AAPL 100%가 된다."""
+    conn.execute("DELETE FROM prices WHERE ticker = 'MSFT' AND date > DATE '2024-06-30'")
+    result = run_backtest(
+        strategy=FixedTwoTickerStrategy(),
+        start=date(2024, 1, 2),
+        end=date(2024, 12, 31),
+        conn=conn,
+        cost_bps=0,
+    )
+    counts = {d: n for d, _, _, n in result.nav_series}
+    assert counts[date(2024, 6, 28)] == 2
+    assert counts[date(2024, 7, 10)] == 2  # 06-30 + 10일까지는 유지
+    assert counts[date(2024, 7, 11)] == 1
+    assert counts[date(2024, 7, 12)] == 1 and counts[date(2024, 9, 9)] == 1
+    navs = {d: v for d, v, _, _ in result.nav_series}
+    # 남은 AAPL이 100% — 07-12 → 09-09(59일) NAV가 AAPL처럼 하루 0.1%씩 오른다
+    assert navs[date(2024, 9, 9)] / navs[date(2024, 7, 12)] == pytest.approx(1.001**59)
+
+
+def test_engine_skips_tickers_without_any_price(conn):
+    """가격이 한 번도 없는 종목은 살 수 없다 — 비중을 받지 못하고 나머지가 100%가 된다."""
+
+    class WithUnpriced(Strategy):
+        name = "WithUnpriced"
+
+        def get_target_positions(self, as_of_date, conn):
+            return {"AAPL": 0.5, "ZZZ": 0.5}
+
+        def params_json(self):
+            return "{}"
+
+    result = run_backtest(
+        strategy=WithUnpriced(),
+        start=date(2024, 1, 2),
+        end=date(2024, 3, 31),
+        conn=conn,
+        cost_bps=0,
+    )
+    assert {n for _, _, _, n in result.nav_series} == {1}
+    navs = [v for _, v, _, _ in result.nav_series]
+    assert navs[-1] / navs[0] == pytest.approx(1.001 ** (len(navs) - 1))
+
+
+def test_engine_rebuy_does_not_earn_the_return_made_while_out(conn):
+    """4월에 AAPL을 팔고(MSFT 100%) 5월 1일에 다시 사면, 그날 수익에 AAPL의 4월 상승(+3%)이
+    붙으면 안 된다 — 판 종목의 마지막 가격이 남아 있으면 재매수일에 한꺼번에 들어온다.
+    가격이 10일 넘게 끊겨 빠졌다가 돌아오는 종목(drop_stale)도 같은 경로를 탄다."""
+
+    class Rotate(Strategy):
+        name = "Rotate"
+
+        def get_target_positions(self, as_of_date, conn):
+            if date(2024, 4, 1) <= as_of_date < date(2024, 5, 1):
+                return {"MSFT": 1.0}
+            return {"AAPL": 1.0}
+
+        def params_json(self):
+            return "{}"
+
+    result = run_backtest(Rotate(), date(2024, 1, 2), date(2024, 6, 30), conn, cost_bps=0)
+    navs = {d: v for d, v, _, _ in result.nav_series}
+    assert navs[date(2024, 5, 1)] / navs[date(2024, 4, 30)] == pytest.approx(1.0, abs=1.5e-3)
+    # 다시 산 뒤에는 AAPL을 그대로 따라간다
+    assert navs[date(2024, 6, 30)] / navs[date(2024, 5, 1)] == pytest.approx(1.001**60)
+
+
+def test_engine_earns_the_benchmark_ticker_when_held(conn):
+    """복제 전략은 ETF를 그대로 담는다 — SPY를 100% 보유하면 수익이 벤치마크와 같아야 한다
+    (0%가 아니라)."""
+
+    class HoldSpy(Strategy):
+        name = "HoldSpy"
+
+        def get_target_positions(self, as_of_date, conn):
+            return {"SPY": 1.0}
+
+        def params_json(self):
+            return "{}"
+
+    result = run_backtest(HoldSpy(), date(2024, 1, 2), date(2024, 3, 31), conn, cost_bps=0)
+    first, last = result.nav_series[0], result.nav_series[-1]
+    assert last[1] / first[1] == pytest.approx(last[2] / first[2])
+    assert last[1] / first[1] > 1.04  # SPY 하루 +0.05% × 89일

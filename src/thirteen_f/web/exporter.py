@@ -12,9 +12,10 @@ from pathlib import Path
 
 import duckdb
 
+from thirteen_f.backtest.engine import STALE_DAYS, tradeable_at
 from thirteen_f.backtest.runner import default_suite
 from thirteen_f.backtest.strategy import latest_public_period
-from thirteen_f.core.dates import parse_quarter, quarter_end, quarter_label
+from thirteen_f.core.dates import parse_quarter, quarter_end, quarter_label, sec_13f_deadline
 
 from .schemas import Manager, Meta, QuarterEntry
 
@@ -167,6 +168,20 @@ def export_stocks(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
         ).fetchall():
             if ticker in px_matrix and close is not None:
                 px_matrix[ticker][q_idx] = float(close)
+    # 스파크라인용 주간 종가: 시장 마지막 날(MAX(prices.date))로 끝나는 최근 12개 ISO 주의
+    # 주별 마지막 close. 주가 모자라면 짧게, 가격이 없으면 []. 쿼리 한 번으로 전 ticker를 모은다.
+    pxw: dict[str, list[float]] = {}
+    for ticker, _week, week_close in conn.execute(
+        """
+        WITH last AS (SELECT MAX(date) AS d FROM prices)
+        SELECT ticker, date_trunc('week', date) AS wk, MAX_BY(close, date) AS wclose
+        FROM prices, last
+        WHERE date > last.d - INTERVAL 91 DAY AND close IS NOT NULL
+        GROUP BY ticker, wk
+        ORDER BY ticker, wk
+        """
+    ).fetchall():
+        pxw.setdefault(ticker, []).append(float(week_close))
     payload: list[dict] = []
     for ticker, display_name, sector, industry in rows:
         payload.append({
@@ -175,6 +190,7 @@ def export_stocks(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
             "s": sector,
             "i": industry or None,
             "px": px_matrix[ticker],
+            "pxw": pxw.get(ticker, [])[-12:],
         })
     (out_dir / "stocks.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
@@ -311,7 +327,7 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
     """Export ``backtest.json`` — list of run records with equity/dd/qrets/holdingsLog/metrics."""
     runs = conn.execute(
         """
-        SELECT r.run_id, r.strategy_name, r.params_json, r.start_date, r.end_date,
+        SELECT r.run_id, r.strategy_name, r.params_json, r.start_date, r.end_date, r.cost_bps,
                m.total_return, m.cagr, m.sharpe, m.sortino, m.mdd, m.calmar,
                m.win_rate_quarterly, m.bench_total_return, m.bench_cagr
         FROM backtest_runs r
@@ -320,9 +336,10 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
         """
     ).fetchall()
 
+    suite_names = {s.name for s in default_suite()}
     payload: list[dict] = []
     for (
-        run_id, name, params_json, _sd, _ed,
+        run_id, name, params_json, _sd, _ed, cost_bps,
         total_ret, m_cagr, m_sharpe, m_sortino, m_mdd, m_calmar,
         m_winq, m_bench_total, m_bench_cagr,
     ) in runs:
@@ -348,6 +365,8 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
             "run_id": run_id,
             "name": name,
             "params": json.loads(params_json) if params_json else {},
+            "costBps": cost_bps,
+            "inSuite": name in suite_names,
             "equity": equity,
             "dd": dd,
             "qrets": qrets,
@@ -372,13 +391,10 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
 
 
 def _next_rebalance(period: date) -> date:
-    """다음 분기말 + 45일(13F 법정 기한). 주말이면 다음 월요일 — 공휴일은 보지 않는 예상값."""
+    """다음 분기 13F의 제출 기한 (분기말 + 45일, 주말·연방 공휴일이면 다음 영업일)."""
     year, q = parse_quarter(quarter_label(period))
     year, q = (year + 1, 1) if q == 4 else (year, q + 1)
-    deadline = quarter_end(f"{year}Q{q}") + timedelta(days=45)
-    while deadline.weekday() >= 5:
-        deadline += timedelta(days=1)
-    return deadline
+    return sec_13f_deadline(quarter_end(f"{year}Q{q}"))
 
 
 def _latest_run_metrics(conn: duckdb.DuckDBPyConnection) -> dict[str, dict]:
@@ -403,12 +419,28 @@ def _latest_run_metrics(conn: duckdb.DuckDBPyConnection) -> dict[str, dict]:
     }
 
 
+def _stale_tickers(conn: duckdb.DuckDBPyConnection) -> set[str]:
+    """마지막 가격이 시장의 마지막 날(``MAX(prices.date)``)보다 ``STALE_DAYS`` 넘게 이른 종목.
+
+    기준을 오늘이 아니라 시장의 마지막 날로 두어, 가격 수집이 오래됐을 때 전 종목이 stale로
+    잡히지 않게 한다. 가격이 아예 없는 종목은 여기 없다 — ``describe``가 따로 본다.
+    """
+    rows = conn.execute(
+        "SELECT ticker FROM prices GROUP BY ticker "
+        "HAVING MAX(date) < (SELECT MAX(date) FROM prices) - CAST(? AS INTEGER)",
+        (STALE_DAYS,),
+    ).fetchall()
+    return {r[0] for r in rows}
+
+
 def export_targets(
     conn: duckdb.DuckDBPyConnection, out_dir: Path, as_of: date | None = None
 ) -> None:
     """Export ``targets.json`` — 기본 suite 전략별 현재 목표 비중 + 직전 목록 대비 diff (Plan 탭).
 
-    백테스트와 같은 ``get_target_positions``를 부르므로 ``thirteen-f targets``와 결과가 같다.
+    백테스트와 같은 ``get_target_positions``를 부르고 가격이 끊긴 종목은 엔진과 같은 규칙
+    (``tradeable_at``)으로 빼므로 ``thirteen-f targets``·백테스트 보유와 결과가 같다. 뺀 종목은
+    ``dropped``. 직전 목록에서는 빼지 않는다 — 들고 있을 수 있는 종목을 SELL에 STALE로 보여 준다.
     직전 목록은 현재 분기가 공개되기 전날(``public_since`` - 1일) 기준이다.
     ``recommended``는 최신 run 중 Calmar 1위(평균 보유 ``RECOMMEND_MIN_POSITIONS`` 이상).
     """
@@ -432,6 +464,7 @@ def export_targets(
             ids = [label_by_cik[c].lower() for c in (ciks or "").split(",") if c in label_by_cik]
             holders_by_ticker[ticker] = (int(count), ids)
     metrics_by_name = _latest_run_metrics(conn)
+    stale = _stale_tickers(conn)
 
     def describe(ticker: str) -> dict:
         row = conn.execute(
@@ -451,11 +484,13 @@ def export_targets(
             "holderIds": ids,
             "lastClose": float(px[0]) if px and px[0] is not None else None,
             "lastCloseDate": px[1].isoformat() if px else None,
+            "priceStale": px is None or ticker in stale,
         }
 
     strategies = []
     for strat in default_suite():
-        current = strat.get_target_positions(as_of_date=as_of, conn=conn)
+        raw_current = strat.get_target_positions(as_of_date=as_of, conn=conn)
+        current = tradeable_at(conn, raw_current, as_of)
         previous = (
             strat.get_target_positions(as_of_date=public_since - timedelta(days=1), conn=conn)
             if public_since else {}
@@ -483,6 +518,7 @@ def export_targets(
             "metrics": metrics_by_name.get(strat.name),
             "positions": positions,
             "sells": sells,
+            "dropped": sorted(set(raw_current) - set(current)),
         })
 
     eligible = [
@@ -497,6 +533,7 @@ def export_targets(
             f"평균 보유 {RECOMMEND_MIN_POSITIONS}종목 이상"
         ),
         "recommended": recommended,
+        "staleDays": STALE_DAYS,
         "strategies": strategies,
     }
     (out_dir / "targets.json").write_text(

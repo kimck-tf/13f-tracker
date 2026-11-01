@@ -1,4 +1,3 @@
-from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -24,7 +23,11 @@ def test_resolve_no_match_returns_none():
 
 def test_resolve_case_insensitive_substring():
     company_tickers = {
-        "0": {"cik_str": 1336528, "ticker": None, "title": "PERSHING SQUARE CAPITAL MANAGEMENT L.P."},
+        "0": {
+            "cik_str": 1336528,
+            "ticker": None,
+            "title": "PERSHING SQUARE CAPITAL MANAGEMENT L.P.",
+        },
     }
     cik = resolve_cik_by_name("Pershing Square", company_tickers)
     assert cik == "0001336528"

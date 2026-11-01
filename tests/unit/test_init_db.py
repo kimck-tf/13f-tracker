@@ -1,9 +1,7 @@
-from pathlib import Path
 
 import duckdb
-import pytest
 
-from scripts.init_db import init_db, EXPECTED_TABLES
+from scripts.init_db import EXPECTED_TABLES, init_db
 
 
 def test_init_db_creates_all_tables(tmp_path):

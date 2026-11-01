@@ -110,7 +110,7 @@ def _openfigi_batch(
         data = resp.json()
 
     out: list[dict[str, Any]] = []
-    for cusip, entry in zip(cusips, data):
+    for cusip, entry in zip(cusips, data, strict=True):
         if "data" not in entry or not entry["data"]:
             out.append(
                 {"cusip": cusip, "ticker": None, "figi": None, "name": None, "is_etf": False}

@@ -1,15 +1,14 @@
 import math
 
-import numpy as np
 import pytest
 
 from thirteen_f.backtest.metrics import (
-    total_return,
     cagr,
+    calmar,
+    max_drawdown,
     sharpe,
     sortino,
-    max_drawdown,
-    calmar,
+    total_return,
     win_rate_quarterly,
 )
 

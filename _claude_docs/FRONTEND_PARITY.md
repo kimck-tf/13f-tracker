@@ -8,7 +8,7 @@ Phase 5 SPA는 데이터의 1차 출처를 명확히 분리한다. 백엔드 exp
 |---|---|---|
 | `QUARTERS` / `Q_LABELS` | Backend (`exporter.export_quarters`) — filings.period_of_report 정렬 + Q-label 생성 | 단일 SSOT, frontend는 read-only |
 | `STOCKS[].px[i]` (분기말 close) | Backend (`exporter.export_stocks`) — prices 테이블 분기말 이하 가장 가까운 영업일 | unit test: `test_export_stocks_uses_sector_and_quarter_end_close` |
-| `STOCKS[].pxWeekly` | Frontend (`hf-data.js:buildWeeklyPrices`) — quarterly → 8-step interpolation + sin noise | 시각화 전용. 실거래 계산 금지 (분기말 px만 truth) |
+| `STOCKS[].pxw` (스파크라인 12주) | Backend (`exporter.export_stocks`) — `MAX(prices.date)`로 끝나는 최근 12개 ISO 주의 주별 마지막 close | `tests/unit/web/test_exporter.py::test_export_stocks_includes_last_12_weekly_closes`. 종목 상세 가격 차트는 `prices/{ticker}.json`의 일별 close (`fetchDailyPx`) |
 | `STOCKS[].s` (sector) | Backend (`cusip_ticker_map.sector` via supplement_sector.py) | `scripts/supplement_sector.py`로 1회 backfill 필수 |
 | `MANAGERS[].avatar` | Backend (`exporter._avatar_from_name`) — full name 단어별 첫 글자, 최대 2자 (Warren Buffett → WB) | `test_avatar_from_name` |
 | `MANAGERS[].color` | Backend (config/managers.yaml → managers.color) — style별 팔레트 | yaml 직접 수정 |
@@ -20,8 +20,7 @@ Phase 5 SPA는 데이터의 1차 출처를 명확히 분리한다. 백엔드 exp
 | `quarterActivity(qIdx)` | Frontend — 모든 매니저 × 종목 action 집계 | spotlight 추출 입력 |
 | `spotlight(qIdx)` | Frontend — quarterActivity 최대 abs(deltaValue) | UI 강조용 |
 | `BACKTESTS[]` (equity/dd/qrets/holdingsLog/metrics) | Backend (`exporter.export_backtest`) — 분기말 resample + backtest_holdings | `test_export_backtest_writes_runs_with_holdings_and_metrics` |
-| `TARGETS` (Plan 탭 — 전략별 현재 목표 비중·직전 대비 buy/keep/sell·권장 전략) | Backend (`exporter.export_targets`) — 백테스트와 같은 `get_target_positions`(as_of=export 시점)와 `latest_public_period`, 권장은 최신 run의 Calmar 1위(평균 보유 8종목 이상) | `tests/unit/web/test_exporter_targets.py`. frontend(`hf-plan.jsx`)는 정렬·라벨·경고(GOOG+GOOGL, ETF)만 계산. `thirteen-f targets`와 같은 결과 |
-| `runStrategy(...)` (실시간 backtest in browser) | Frontend (`hf-data.js`) — STOCKS.px 기반 시뮬 (mock-era 잔존, 디자인 prototype 용도) | **실거래 의사결정에 사용 금지**. backend의 `thirteen-f backtest`만 신뢰. Frontend strategy는 BuilderScreen에서 빠른 비교 UI 용도. |
+| `TARGETS` (Plan 탭 — 전략별 현재 목표 비중·직전 대비 buy/keep/sell·권장 전략) | Backend (`exporter.export_targets`) — 백테스트와 같은 `get_target_positions`(as_of=export 시점)와 `latest_public_period`, 권장은 최신 run의 Calmar 1위(평균 보유 8종목 이상) | `tests/unit/web/test_exporter_targets.py`. frontend(`hf-plan.jsx`)는 정렬·라벨·경고(GOOG+GOOGL, ETF)만 계산하고, `priceStale`·`staleDays`·`dropped`는 backend 값 그대로 STALE 배지·주의 문구로 보여 준다 — 집계 전략은 backend가 ETF를 빼고 발행사당 한 클래스만 내므로 이 경고는 복제 전략(SingleManagerClone)에서만 뜬다. `thirteen-f targets`와 같은 결과 |
 | daily close series (per ticker) | Backend (`exporter.export_prices_split`) — prices/{TICKER}.json | StockScreen에서 `fetchDailyPx(ticker)` lazy 호출. unit test: `test_export_prices_split_per_ticker` |
 | `LLM_SUMMARY` (분기별 headline/top_signals) | **미구현** — `exporter.export_llm_summary`가 없어 `llm_summary.json`이 생성되지 않음. frontend는 `{}`로 대체 | 구현 시 이 행 갱신. /api/ask는 실시간 |
 | `/api/ask` 응답 | Backend (Chunk D `summary.chat_reply`) — Gemini chat with structured cards | 호출 시점마다 새로 생성 |
@@ -31,7 +30,6 @@ Phase 5 SPA는 데이터의 1차 출처를 명확히 분리한다. 백엔드 exp
 1. **사실(facts)**: backend가 SSOT. 프론트는 fetch만, 파싱·표시만.
 2. **표시 파생(display derive)**: 분류·소계·랭킹·강조 등 — 프론트에서 계산. 백엔드 추가 dump 불필요.
 3. **불일치 발견 시**: backend가 정답. 프론트 helper를 backend SQL과 맞추는 방향으로 수정.
-4. **`runStrategy` 같은 prototype 코드**: backtest UI를 mock으로 보여주는 용도. 실 백테스트는 `thirteen-f backtest --all` + `BACKTESTS[]` JSON 사용.
 
 ## 변경 추적
 

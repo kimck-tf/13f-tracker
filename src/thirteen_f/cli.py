@@ -33,6 +33,66 @@ def collect(
 
 
 @app.command()
+def check_filings() -> None:
+    """DB에 없는 13F-HR 원본이 EDGAR에 있는지 확인한다 (collect 전 점검, 자동 갱신의 신호).
+
+    그 분기의 기한(``sec_13f_due_at``)이 지난 공시가 있으면 한 줄씩 출력하고 exit 3, 없으면
+    exit 0. 기한이 아직인 분기의 공시는 "대기"로만 보여 준다 — 그 전에 collect하면
+    ``latest_public_period``가 DB에 들어온 일부 제출분만으로 그 분기를 공개된 것으로 보고 Plan 탭의
+    목표 비중을 바꾼다. 확인 자체가 실패하면(네트워크·설정) exit 2. 갱신 신호를 1이 아닌 3으로
+    두는 것은 Python의 미처리 예외·import 실패도 1로 끝나기 때문이다 —
+    ``scripts/check_and_update.ps1``은 3일 때만 갱신한다.
+    """
+    from datetime import UTC, datetime
+    from pathlib import Path
+
+    import duckdb
+    import yaml  # type: ignore[import-untyped]  # PyYAML 스텁 없음 (기존 모듈과 같은 기준선 오류)
+
+    from thirteen_f.collect.edgar_client import EdgarClient
+    from thirteen_f.collect.watch import find_new_filings
+    from thirteen_f.core.config import load_settings
+    from thirteen_f.core.dates import sec_13f_deadline, sec_13f_due_at
+
+    try:
+        settings = load_settings()
+        managers = yaml.safe_load(Path("config/managers.yaml").read_text(encoding="utf-8"))
+        conn = duckdb.connect(str(settings.duckdb_path), read_only=True)
+        try:
+            with EdgarClient(user_agent=settings.sec_user_agent) as client:
+                new = find_new_filings(conn, client, managers)
+        finally:
+            conn.close()
+    except Exception as exc:
+        typer.echo(f"check-filings 실패: {type(exc).__name__}: {exc}", err=True)
+        raise typer.Exit(2) from exc
+
+    if not new:
+        typer.echo("새 13F-HR 없음")
+        return
+    now = datetime.now(UTC)
+    ready = [n for n in new if now >= sec_13f_due_at(n["period_of_report"])]
+    waiting = [n for n in new if n not in ready]
+
+    def line(n: dict) -> str:
+        return (
+            f"  {n['label']:14s} {n['form_type']:8s} {n['period_of_report']}  {n['filed_at']}"
+            f"  {n['accession_no']}"
+        )
+
+    if ready:
+        typer.echo(f"새 13F-HR {len(ready)}건")
+        for n in ready:
+            typer.echo(line(n))
+    if waiting:
+        typer.echo(f"기한 전이라 대기 {len(waiting)}건 — 기한 다음 날부터 반영")
+        for n in waiting:
+            typer.echo(f"{line(n)}  (기한 {sec_13f_deadline(n['period_of_report'])})")
+    if ready:
+        raise typer.Exit(3)
+
+
+@app.command()
 def analyze(
     threshold: float = typer.Option(0.05, help="hold/increase/decrease 분류 threshold"),
 ) -> None:
@@ -64,7 +124,8 @@ def backtest(
     cost_bps: float = typer.Option(10.0, help="편도 거래비용 (bp)"),
 ) -> None:
     """Phase 3: 백테스트 실행. --all 또는 --strategy 중 하나 지정."""
-    from datetime import date as _date, datetime
+    from datetime import date as _date
+    from datetime import datetime
     from pathlib import Path
 
     from thirteen_f.backtest.runner import run_suite
@@ -129,6 +190,7 @@ def targets(
 
     import duckdb
 
+    from thirteen_f.backtest.engine import STALE_DAYS, tradeable_at
     from thirteen_f.backtest.runner import strategy_by_name
     from thirteen_f.core.config import load_settings
 
@@ -142,11 +204,15 @@ def targets(
 
     conn = duckdb.connect(str(settings.duckdb_path), read_only=True)
     try:
-        positions = strat.get_target_positions(as_of_date=d, conn=conn)
+        raw = strat.get_target_positions(as_of_date=d, conn=conn)
+        positions = tradeable_at(conn, raw, d)  # 백테스트와 같이 가격이 끊긴 종목은 뺀다
     finally:
         conn.close()
 
     typer.echo(f"{d} 기준 {strat.name} — {len(positions)}종목")
+    dropped = sorted(set(raw) - set(positions))
+    if dropped:
+        typer.echo(f"  가격이 {STALE_DAYS}일 넘게 없어 뺀 종목: {', '.join(dropped)}")
     if not positions:
         typer.echo("쓸 수 있는 13F가 없어 목표 종목이 없다 (전액 현금)")
         return
@@ -183,6 +249,11 @@ def report(
         typer.echo(
             "Quarto CLI 미설치. Windows: winget install RStudio.Quarto", err=True
         )
+        raise typer.Exit(2)
+    import importlib.util
+
+    if importlib.util.find_spec("plotly") is None or importlib.util.find_spec("jupyter") is None:
+        typer.echo("Quarto 의존성 미설치: uv sync --extra report", err=True)
         raise typer.Exit(2)
 
     if not quarter and not latest:
@@ -241,6 +312,9 @@ def export(
 
 @app.command()
 def update(
+    start: str = typer.Option(
+        None, "--start", help="collect 시작 분기 (예: 2024Q1). 생략하면 DB의 최소 분기"
+    ),
     skip_collect: bool = typer.Option(False, help="collect 단계 건너뛰기"),
     skip_backtest: bool = typer.Option(False, help="backtest 단계 건너뛰기"),
     skip_export: bool = typer.Option(False, help="export 단계 건너뛰기 (Phase 5)"),
@@ -267,9 +341,23 @@ def update(
             typer.echo(f"step failed: {args[0]} (exit={result.returncode})", err=True)
             raise typer.Exit(result.returncode)
 
+    from thirteen_f.core.config import load_settings
+    from thirteen_f.core.db_tools import backup_db, db_start_quarter
+
+    settings = load_settings()
+    backup = backup_db(settings.duckdb_path)
+    if backup:
+        typer.echo(f"backup: {backup}")
+
     if not skip_collect:
+        label = start or db_start_quarter(settings.duckdb_path)
+        collect_args = ["collect"]
+        if label:
+            collect_args += ["--start", label]
+            if not start:
+                typer.echo(f"collect range: --start {label} (DB 최소 분기)")
         typer.echo("=== Phase 1: collect ===")
-        run_step(["collect"])
+        run_step(collect_args)
     typer.echo("=== Phase 2: analyze ===")
     run_step(["analyze"])
     if not skip_backtest:

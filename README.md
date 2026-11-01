@@ -6,7 +6,7 @@
 
 - **수집**: SEC EDGAR에서 분기별 13F-HR 공시 직접 파싱 (httpx + lxml)
 - **분석**: 분기 간 변화·conviction·continuity·consensus 4 시그널 + 가중 종합 점수
-- **백테스트**: 7종 전략 8개 구성 (SingleManagerClone(Buffett·Druckenmiller) / ConsensusTopK / ScoreTopK / ConvictionFollow / NewBuyOnly / Ensemble / **MultiManager**) + Lookahead-safe 검증 + 분기 holdings snapshot
+- **백테스트**: 7종 전략 8개 구성 (SingleManagerClone(Buffett·Druckenmiller) / ConsensusTopK / ScoreTopK / ConvictionFollow / NewBuyOnly / Ensemble / **MultiManager**) + Lookahead-safe 검증 + 분기 holdings snapshot. Backtest 화면은 `backtest --all`이 남긴 backend run만 표시한다
 - **시각화**: 10페이지 정적 SPA (Home / Managers / Compare / Stocks / Changes / Consensus / Backtest / **Plan** / Builder / Ask) — React 18 + Pretendard, FastAPI 정적 서버. Plan은 백테스트 비교 → 권장 전략 → 지금의 목표 비중·매수/매도 목록
 - **리포트**: Quarto 6 챕터 단일 HTML (선택: Gemini LLM 분기 헤드라인 요약 + Top 10 시그널 해석)
 - **Ask LLM**: `/api/ask` 엔드포인트 (Gemini chat with structured cards, per-IP rate limit 10/min, prompt injection 방어)
@@ -26,7 +26,7 @@
 ```bash
 # 1) Python 환경 (uv 필요)
 uv venv
-uv sync
+uv sync --extra report   # report extra = Quarto 리포트용 jupyter·plotly (빼도 수집·분석·SPA는 동작)
 
 # 2) .env (SEC fair-access policy)
 cp .env.example .env
@@ -48,8 +48,8 @@ uv run python scripts/init_db.py
 
 ```bash
 # 1) 전체 파이프라인 한 번 (collect → analyze → backtest → export → report)
-#    update는 collect를 --start 없이 실행해 2011Q1부터 수집한다. 기존 범위(2024Q1~)를 유지하려면
-#    uv run thirteen-f collect --start 2024Q1  →  uv run thirteen-f update --skip-collect
+#    update의 collect는 DB에 있는 가장 이른 분기부터 수집한다 (빈 DB면 2011Q1).
+#    범위를 바꾸려면 uv run thirteen-f update --start 2020Q1
 uv run thirteen-f update
 
 # 2) (선택) cusip_ticker_map.sector backfill — 신규 ticker 추가 후 1회
@@ -92,7 +92,7 @@ print(c.execute('''
 - [x] Phase 1 — EDGAR 수집 (15명 / 110 filings / 10,867 holdings / 1,584 price tickers)
 - [x] Phase 2 — 4 시그널 + 종합 점수 (10,759 signals / 8,785 total_scores)
 - [x] Phase 3 — Strategy ABC + 7 전략(MultiManager 추가) + Lookahead-safe + Engine + Runner
-- [x] Phase 4 — Quarto 6 챕터 + report CLI (Streamlit 5페이지는 `_legacy_dashboard/`로 격리)
+- [x] Phase 4 — Quarto 6 챕터 + report CLI (Streamlit 5페이지는 2026-10-31에 삭제, 차트는 `reports/quarto/_charts.py`)
 - [x] Phase 4+ — Gemini LLM 통합 (분기 헤드라인 요약 + Top 10 시그널 해석, thinking on/off 토글)
 - [x] Phase 5 — Static SPA (9페이지) + FastAPI 정적 서버 + DuckDB→JSON exporter + Gemini `/api/ask` chat + per-IP rate limit
 - [x] Phase 5 Code Review Fix — 12 finding 반영 (4 Critical + 8 Important): BACKTESTS 정밀 매칭 + SIM 배지, rate_limit GC, TICKER stop-list, export_stocks SQL 최적화(MAX_BY), chat_prompt injection 방어, ErrorScreen 친화 진단 등
@@ -100,11 +100,15 @@ print(c.execute('''
 
 - [x] 백테스트 최적화 (2026-09-20) — 벤치마크 NAV 갱신·집계형 lookahead 규칙·NewBuyOnly `min_positions` 수정 후 79개 설정 탐색(`scripts/sweep_backtests.py`, DB 사본). Calmar 기준 1위 ConsensusTopK(3,10)을 비롯한 계열별 최적값을 기본 스위트에 반영. 보고서 `docs/backtest-optimization-2026-09.md`. `thirteen-f targets` 명령과 SPA **Plan** 탭(비교표 → 권장 전략 → 지금의 목표 비중·매수/매도 목록, `targets.json`) 추가
 
-**unit 189 passed · integration 3 passed + 1 skipped** (collect e2e는 로컬 VCR 카세트를 `RECORD_VCR=1`로 녹화해야 실행). (Frontend SPA는 단위 테스트 X — `thirteen-f serve` 후 브라우저 navigate 검증; LLM은 httpx mock + structured JSON schema 검증; Quarto는 사용자 CLI 설치 후 검증)
+**unit 273 passed · integration 3 passed + 1 skipped** (2026-10-31) (collect e2e는 로컬 VCR 카세트를 `RECORD_VCR=1`로 녹화해야 실행). (Frontend SPA는 단위 테스트 X — `thirteen-f serve` 후 브라우저 navigate 검증; LLM은 httpx mock + structured JSON schema 검증; Quarto는 사용자 CLI 설치 후 검증)
+
+**CI**: GitHub Actions — `ruff check src tests scripts` + unit 테스트 (Python 3.12·3.14, `.github/workflows/ci.yml`). integration은 네트워크·VCR 때문에 제외.
 
 ## Backtest Snapshot (2024-01-02 ~ 2026-09-14, cost_bps=10, 2026-09-20 실행)
 
 기본 8전략의 파라미터는 2026-09 탐색(`docs/backtest-optimization-2026-09.md`, 79개 설정, Calmar 기준)의 계열별 최적값이다. "이전 설정" 열은 탐색 전 파라미터로 2026-09-15에 실행한 값.
+
+> 2026-10-31: 엔진이 다시 산 종목에 보유하지 않은 기간의 수익을 붙이던 버그를 고쳤다. 아래 표와 그 탐색은 이 버그가 들어간 엔진의 값이라 높게 나와 있다 — 고친 엔진으로 같은 기간을 다시 돌리면 ConsensusTopK(3,10) CAGR 23.06%·Calmar 1.56, SPY 20.72%다 (분석 테이블은 Phase 1 보정 전 그대로). 2026Q3 반영 때 표와 탐색을 다시 만든다.
 
 | 전략 | CAGR | MDD | Sharpe | Calmar | 이전 설정 → CAGR |
 |---|--:|--:|--:|--:|---|
@@ -129,14 +133,14 @@ print(c.execute('''
 3. **백테스트 가용 시작일은 2024-01-02** (SPY 가격 데이터 시작점)
    첫 13F(2024Q1)가 2024-05-13에 공개돼 그 전까지는 모든 전략이 현금이고, 그만큼 CAGR이 SPY보다 불리하게 계산된다. 약 32개월 short-cycle 검증이지 long-cycle 검증이 아니다. 파라미터는 이 표본 안에서 고른 값이라 실제 기대 성과는 표보다 낮게 봐야 한다.
 
-4. **Buffett vs Druckenmiller 복제** — 두 복제 모두 첫 13F가 보이는 2024-05-15부터 투자한다. Druckenmiller 복제(누적 +128%)는 Natera(비중 13~18%)·Insmed·Teva 같은 소수 고확신 종목이 성과를 주도했고, 2025-04 관세 충격 때 하루 −7.7%·+12.9%로 변동도 크다. 복제는 콜옵션을 기초자산 명목금액의 롱 노출로 계산하고(분기별 비중 2.6~16.4%) 풋은 제외하므로, 레버리지·프리미엄이 있는 실제 포지션과 다르다. Duquesne이 금액을 천 달러 단위로 보고하는 문제는 제출물 안의 상대 비중만 쓰는 복제 수익률에는 영향이 없다.
+4. **Buffett vs Druckenmiller 복제** — 두 복제 모두 첫 13F가 보이는 2024-05-15부터 투자한다. Druckenmiller 복제(누적 +128%)는 Natera(비중 13~18%)·Insmed·Teva 같은 소수 고확신 종목이 성과를 주도했고, 2025-04 관세 충격 때 하루 −7.7%·+12.9%로 변동도 크다. 복제는 콜옵션을 기초자산 명목금액의 롱 노출로 계산하고(분기별 비중 2.6~16.4%) 풋은 제외하므로, 레버리지·프리미엄이 있는 실제 포지션과 다르다. Duquesne이 금액을 천 달러 단위로 보고한 필링은 collect 단계에서 ×1000 보정된다 (제출물 안의 상대 비중만 쓰는 복제 수익률은 보정 전에도 영향이 없었다).
 
 5. **매니저 구성** — Burry(Scion)는 2025Q3 이후 13F가 없어 최근 분기 컨센서스에서 빠진다. Ackman의 2026Q2는 Pershing Square Inc. 통합 보고라 HHH +900만 주, PSUS 신규처럼 법인이 직접 보유하던 지분이 합쳐져 보이는 변화가 섞여 있다(실제 매매 아님).
 
 6. **Lookahead bias 차단은 검증됨** (Spec §7.4)
    5개 전략 × 미래 filing 노출 6 케이스 단위 테스트로 확인. `filings.filed_at <= as_of_date` 가드는 모든 전략 SQL에 강제됨. 매니저 전원의 집계(총점·컨센서스)를 쓰는 전략은 그 분기 13F가 모두 제출된 뒤에만 그 분기를 쓴다 (2026-09 수정 전에는 첫 제출자 기준이라 최대 11일 앞섰다).
 
-7. **탐색에서 발견한 정의상 한계** — 컨센서스 상위 종목에 GOOG·GOOGL이 따로 들어가 Alphabet이 사실상 두 자리를 차지하고, SPY 같은 ETF도 종목으로 집계된다. 같은 회사 복수 클래스 합산·ETF 제외는 아직 없다 (`docs/backtest-optimization-2026-09.md` §5·§6).
+7. **집계 전략의 종목 단위** — 컨센서스 상위 종목에 GOOG·GOOGL이 따로 들어가 Alphabet이 두 자리를 차지하고 SPY 같은 ETF도 종목으로 집계되던 문제를, 2026-10-31에 집계 전략(ConsensusTopK·ScoreTopK·NewBuyOnly·ConvictionFollow·MultiManager)의 ETF 제외·발행사(CUSIP 앞 6자리) 합산으로 고쳤다. 복제 전략은 거장 보유 그대로다. 위 백테스트 수치는 이 변경 전 기준이다 (`docs/backtest-optimization-2026-09.md` §5·§6).
 
 ## LLM 보조 (선택)
 
@@ -159,6 +163,7 @@ print(c.execute('''
 | Command | Phase | Status |
 |---|---|---|
 | `thirteen-f collect [--start QUARTER]` | 1 | done |
+| `thirteen-f check-filings` | 1 | done (DB에 없는 13F-HR 원본 목록 — 있으면 exit 3, 없으면 0, 확인 실패 2. `scripts/check_and_update.ps1`이 매일 확인해 갱신) |
 | `thirteen-f analyze [--threshold FLOAT]` | 2 | done |
 | `thirteen-f backtest [--strategy NAME / --all] [--start --end --cost-bps]` | 3 | done (기본 8개: 7종 전략 + Druckenmiller 복제) |
 | `thirteen-f targets --strategy NAME [--as-of DATE]` | 3 | done (전략이 지금 지시하는 목표 비중 — 분기마다 매매 목록 확인) |
@@ -169,7 +174,7 @@ print(c.execute('''
 
 ## Tech Stack
 
-**Backend**: Python ≥ 3.11 / uv / httpx / lxml / duckdb / polars / pyyaml / typer / yfinance / rich / tenacity / pydantic v2 / fastapi + uvicorn (Phase 5) / plotly (Quarto 전용)
+**Backend**: Python ≥ 3.11 / uv / httpx / lxml / duckdb / pyyaml / typer / yfinance / rich / tenacity / pydantic v2 / fastapi + uvicorn (Phase 5) / jupyter·plotly (Quarto 전용 `report` extra)
 **Frontend**: React 18 + Babel-standalone (CDN) / Pretendard + JetBrains Mono / hash router SPA
 **Optional**: Quarto CLI (HTML 리포트) / Gemini API raw httpx (LLM 요약·해석·chat)
 

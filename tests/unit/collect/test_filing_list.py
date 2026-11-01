@@ -4,7 +4,6 @@ from pathlib import Path
 
 from thirteen_f.collect.edgar_client import extract_13f_filings
 
-
 FIXTURE = Path(__file__).parent.parent.parent / "fixtures" / "edgar" / "submissions_buffett.json"
 
 

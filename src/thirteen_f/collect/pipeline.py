@@ -1,9 +1,8 @@
 """Phase 1 orchestration: resolve_cik → fetch filings → parse → upsert → CUSIP map → prices."""
 from __future__ import annotations
 
-import json
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import duckdb
@@ -21,7 +20,9 @@ from thirteen_f.collect.loader import (
 from thirteen_f.collect.parser import parse_amendment_type, parse_information_table
 from thirteen_f.collect.price_loader import download_prices
 from thirteen_f.collect.resolve_cik import resolve_missing_ciks
+from thirteen_f.collect.value_units import fix_thousand_unit_filings
 from thirteen_f.core.config import Settings
+from thirteen_f.core.dates import sec_13f_due_at
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,7 @@ def run_collect(
     db_path: Path,
     start_date: date,
     failure_log: Path | None = None,
+    now: datetime | None = None,
 ) -> dict[str, int]:
     """Phase 1 전체 실행. 통계 dict 반환.
 
@@ -74,6 +76,12 @@ def run_collect(
     3. mark_supersedes
     4. CUSIP fill_missing
     5. Download prices for unique tickers
+    Filings of a quarter whose 13F deadline has not passed yet (``sec_13f_due_at``, ``now``
+    defaults to the current UTC time) are not loaded.
+
+    6. Rescale filings reported in thousands of dollars (value_units) — also right after
+       step 3 inside the same transaction, so a later failure never leaves a re-parsed
+       filing at 1/1000
     """
     stats: dict[str, int] = {
         "managers": 0,
@@ -81,8 +89,10 @@ def run_collect(
         "holdings_rows": 0,
         "cusip_resolved": 0,
         "price_tickers": 0,
+        "value_unit_fixed": 0,
     }
 
+    now = now or datetime.now(UTC)
     conn = duckdb.connect(str(db_path))
     try:
         with EdgarClient(user_agent=settings.sec_user_agent) as client:
@@ -93,6 +103,10 @@ def run_collect(
 
             # 2) Reload yaml after resolve
             managers = yaml.safe_load(managers_yaml.read_text(encoding="utf-8"))
+            # 매니저 루프와 바로 뒤의 단위 보정은 한 트랜잭션이다. 범위 안 필링은 매번 다시
+            # 파싱돼 천 달러 원값으로 돌아가므로, 도중에 실패하면 커밋하지 않고(연결을 닫을 때
+            # 되돌려진다) 실행 전 값을 남긴다
+            conn.execute("BEGIN TRANSACTION")
             for m in managers:
                 if not m.get("cik"):
                     logger.warning("Skip %s (no CIK)", m.get("label"))
@@ -107,7 +121,16 @@ def run_collect(
                 for i, filer_cik in enumerate([m["cik"], *(m.get("extra_ciks") or [])]):
                     subs = client.get_submissions(filer_cik)
                     filings = extract_13f_filings(subs)
-                    filings = [f for f in filings if f["period_of_report"] >= start_date]
+                    # 기한 전 분기의 제출분은 적재하지 않는다 — DB에 들어온 일부 제출분만 보는
+                    # latest_public_period가 그 분기를 공개된 것으로 보지 않게
+                    held = [f for f in filings if now < sec_13f_due_at(f["period_of_report"])]
+                    if held:
+                        logger.info("Hold %d filings of %s until their 13F deadline",
+                                    len(held), m["label"])
+                    filings = [
+                        f for f in filings
+                        if f["period_of_report"] >= start_date and f not in held
+                    ]
                     if i == 0:
                         primary_periods = {f["period_of_report"] for f in filings}
                     for f in filings:
@@ -152,13 +175,23 @@ def run_collect(
 
                 mark_supersedes(conn, m["cik"])
 
+            # 분기말 가격이 이미 있는 필링은 여기서 다시 보정한다 — 뒤의 OpenFIGI·가격 단계가
+            # 실패해도 1/1000 값이 커밋되지 않게. 새 분기는 가격을 받은 뒤 7)에서 보정된다
+            fixed = fix_thousand_unit_filings(conn)
+            conn.execute("COMMIT")
+            stats["value_unit_fixed"] += len(fixed)
+            for acc in fixed:
+                logger.info("Value unit fixed (x1000): %s", acc)
+
             # 5) CUSIP fill missing
             all_cusips = [
                 r[0] for r in conn.execute(
                     "SELECT DISTINCT cusip FROM holdings WHERE cusip IS NOT NULL"
                 ).fetchall()
             ]
-            stats["cusip_resolved"] = fill_missing(conn, all_cusips, settings.openfigi_api_key or None)
+            stats["cusip_resolved"] = fill_missing(
+                conn, all_cusips, settings.openfigi_api_key or None
+            )
 
             # 6) Prices
             tickers = [
@@ -169,7 +202,15 @@ def run_collect(
             stats["price_tickers"] = len(tickers)
             price_results = download_prices(conn, tickers, start_date, failure_log)
             n_failed = sum(1 for v in price_results.values() if v == 0)
-            logger.info("Prices: %d tickers downloaded, %d failed", len(tickers) - n_failed, n_failed)
+            logger.info(
+                "Prices: %d tickers downloaded, %d failed", len(tickers) - n_failed, n_failed
+            )
+
+            # 7) 천 달러 단위 필링 보정 — 분기말 종가로 판정하므로 가격 다음에 둔다
+            fixed = fix_thousand_unit_filings(conn)
+            stats["value_unit_fixed"] += len(fixed)
+            for acc in fixed:
+                logger.info("Value unit fixed (x1000): %s", acc)
 
     finally:
         conn.close()

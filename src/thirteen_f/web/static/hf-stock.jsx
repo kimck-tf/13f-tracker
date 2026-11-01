@@ -5,7 +5,8 @@ function StocksListScreen({ quarter, setQuarter }) {
     const holders = tickerHolders(s.t, quarter);
     const pxNow = s.px[quarter];
     const pxPrev = quarter > 0 ? s.px[quarter - 1] : pxNow;
-    const ret = (pxNow - pxPrev) / pxPrev;
+    // 가격이 한 번도 없는 티커(다운로드 실패)는 px가 null이다
+    const ret = pxNow != null && pxPrev ? (pxNow - pxPrev) / pxPrev : null;
     const totalShares = holders.reduce((a, b) => a + b.shares, 0);
     const totalValue = totalShares * pxNow;
     return { ...s, holders, pxNow, ret, totalShares, totalValue, nHolders: holders.length };
@@ -21,12 +22,12 @@ function StocksListScreen({ quarter, setQuarter }) {
               { key: "t", label: "TICKER", w: 70, render: r => <button className="hf-link mono b" onClick={(e) => { e.stopPropagation(); navigate("/stocks/" + r.t); }}>{r.t}</button>, value: r => r.t },
               { key: "n", label: "COMPANY", flex: 1.2, render: r => <span className="hf-tx">{r.n}</span> },
               { key: "s", label: "SECTOR", w: 100, render: r => <span className="hf-pill" style={{ color: SECTOR_COLORS[r.s], borderColor: SECTOR_COLORS[r.s] }}>{r.s}</span> },
-              { key: "px", label: "PRICE", w: 80, align: "right", render: r => <span className="mono num">${r.pxNow.toFixed(2)}</span>, value: r => r.pxNow },
+              { key: "px", label: "PRICE", w: 80, align: "right", render: r => <span className="mono num">{r.pxNow == null ? "—" : "$" + r.pxNow.toFixed(2)}</span>, value: r => r.pxNow },
               { key: "ret", label: "QoQ %", w: 80, align: "right", render: r => <Delta value={r.ret} />, value: r => r.ret },
               { key: "mc", label: "MKT CAP", w: 90, align: "right", render: r => <span className="mono num">{fmtMoney(r.mc * 1e9, { decimals: 0 })}</span>, value: r => r.mc },
               { key: "nHolders", label: "HOLDERS", w: 80, align: "right", render: r => <span className="mono num b">{r.nHolders}</span> },
               { key: "totalValue", label: "13F VAL", w: 100, align: "right", render: r => <span className="mono num">{fmtMoney(r.totalValue * 1e6)}</span> },
-              { key: "spark", label: "12W", w: 100, sortable: false, render: r => <Spark values={r.pxWeekly.slice(-12)} w={90} h={22} fill /> },
+              { key: "spark", label: "12W", w: 100, sortable: false, render: r => <Spark values={r.pxw} w={90} h={22} fill /> },
             ]}
             rows={rows}
             initialSort={{ key: "nHolders", dir: "desc" }}
@@ -42,7 +43,7 @@ function StockScreen({ ticker, quarter, setQuarter }) {
   const stock = STOCK_MAP[ticker];
 
   // Phase 5 C3: daily price series lazy-loaded per ticker
-  // (kept on the screen for future chart upgrades; falls back to {date:[], close:[]})
+  // (가격 차트가 쓴다 — 받기 전이나 파일이 없으면 {date:[], close:[]})
   const [pxDaily, setPxDaily] = React.useState({ date: [], close: [] });
   React.useEffect(() => {
     let alive = true;
@@ -62,7 +63,7 @@ function StockScreen({ ticker, quarter, setQuarter }) {
   const holders = useMemo(() => tickerHolders(ticker, quarter), [ticker, quarter]);
   const pxNow = stock.px[quarter];
   const pxPrev = quarter > 0 ? stock.px[quarter - 1] : pxNow;
-  const ret = (pxNow - pxPrev) / pxPrev;
+  const ret = pxNow != null && pxPrev ? (pxNow - pxPrev) / pxPrev : null;
 
   // Per-quarter holder count for trend
   const holdersByQ = QUARTERS.map((_, q) => tickerHolders(ticker, q).length);
@@ -86,7 +87,7 @@ function StockScreen({ ticker, quarter, setQuarter }) {
   }).filter(row => row.anyHeld);
 
   // Price line for full range
-  const priceSeries = [{ label: "Price", color: "var(--ink)", values: stock.pxWeekly, width: 1.6 }];
+  const priceSeries = [{ label: "Price", color: "var(--ink)", values: pxDaily.close, width: 1.6 }];
 
   return (
     <>
@@ -114,24 +115,25 @@ function StockScreen({ ticker, quarter, setQuarter }) {
             </div>
           </div>
           <div className="stk-h-px">
-            <div className="stk-h-px-v mono">${pxNow.toFixed(2)}</div>
+            <div className="stk-h-px-v mono">{pxNow == null ? "—" : "$" + pxNow.toFixed(2)}</div>
             <div className={"stk-h-px-d mono num " + (ret >= 0 ? "pos" : "neg")}>{fmtPct(ret, { signed: true, decimals: 2 })} QoQ</div>
           </div>
         </div>
 
         {/* Charts row */}
         <div className="stk-charts">
-          <Section title="Price · weekly close" sub="hover for quarter-aligned values" pad={false}>
-            <LineChart
-              series={priceSeries}
-              w={840} h={260}
-              padding={{ l: 50, r: 12, t: 12, b: 28 }}
-              formatY={v => "$" + v.toFixed(0)}
-              formatX={i => {
-                const q = Math.floor(i / 8);
-                return q < Q_LABELS.length ? Q_LABELS[q] : "";
-              }}
-            />
+          <Section title="Price · daily close" sub="hover for daily values" pad={false}>
+            {pxDaily.close.length < 2 ? (
+              <div className="muted" style={{ padding: 16 }}>가격 데이터 없음</div>
+            ) : (
+              <LineChart
+                series={priceSeries}
+                w={840} h={260}
+                padding={{ l: 50, r: 12, t: 12, b: 28 }}
+                formatY={v => "$" + v.toFixed(0)}
+                formatX={i => (pxDaily.date[i] || "").slice(0, 7)}
+              />
+            )}
           </Section>
           <div className="stk-side">
             <Stat label="Holders this Q" value={holders.length} sub={`of ${MANAGERS.length} tracked`} accent />

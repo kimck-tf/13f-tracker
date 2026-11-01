@@ -4,7 +4,8 @@
 
 ## 새 분기 13F 반영
 
-1. `data/13f.duckdb`를 복사해 백업한 뒤 `uv run thirteen-f collect --start <기존 DB와 같은 시작 분기>` — `update`는 `--start`를 넘기지 않아 기본값 `2011Q1`(Spec §1.3 설계 범위)부터 수집한다. 가격 단계가 전 종목(약 1,650개)을 다시 받으므로 2시간 가까이 걸린다 (2026-09 실측: EDGAR 1분, OpenFIGI 5분, 가격 약 2시간). 실행 중에는 DB가 잠겨 다른 프로세스가 읽을 수 없다.
+0. `uv run thirteen-f check-filings` — DB에 없는 13F-HR 원본이 EDGAR에 있으면 매니저·분기·제출일·accession을 한 줄씩 보여 주고 exit 3(1은 Python 오류와 겹쳐 쓰지 않는다), 없으면 `새 13F-HR 없음`과 exit 0, 확인이 실패하면(네트워크·`.env`·DB 잠금) exit 2. 그 분기의 기한(분기말 + 45일, 토·일·연방 공휴일이면 다음 영업일, 그날 미 동부 17:30 = 한국 다음 날 07:30)이 지나지 않은 공시는 "대기"로만 보여 주고 갱신 신호로 쓰지 않는다. collect도 그런 분기의 제출분은 적재하지 않는다 — `latest_public_period`가 DB에 들어온 일부 제출분만으로 그 분기를 공개된 것으로 보고 Plan 탭의 목표 비중을 바꾸지 않게. 그래서 기한 전에 손으로 update해도 새 분기는 들어오지 않는다. 원본을 대체하는 정정본(13F-HR/A RESTATEMENT)도 센다. collect가 적재하지 않는 것은 세지 않는다 — 추가분만 담은 NEW HOLDINGS 정정본(표지를 읽어 판정), DB 최소 분기보다 이른 분기, 대표 CIK도 보고한 분기의 `extra_ciks` 제출분. 매일 자동으로 확인·갱신하려면 아래 "새 공시 자동 확인·갱신".
+1. `uv run thirteen-f update --skip-backtest --skip-export --skip-report` — `update`는 시작할 때 `data/backups/`(Google Drive 동기화 폴더)에 DB 사본을 만들어 최근 3개를 남기고, collect는 DB의 최소 분기부터 수집한다 (`--start`로 바꿀 수 있다). 가격 단계는 종목별 마지막 저장일 10일 전부터만 받고, 배당·분할로 수정 종가가 소급 조정되면 그 종목의 저장 이력 전체를 같은 비율로 재스케일한다 (전체 기간을 다시 받는 것은 겹치는 구간이 한 비율로 설명되지 않는 종목뿐 — 데이터 정정이나 저장 이력 안의 단절). `--start`를 DB의 가장 이른 가격보다 앞당기면 그 실행은 전 종목을 새 시작일부터 받는다. 요청은 시작일이 같은 종목을 50개씩 묶어 보내므로 약 1,650종목에 5분 안팎 걸린다 (2026-10-31 100종목 실측 17.4초, 배치 2번. 배치에서 빠진 종목만 종목당 1번씩 다시 받는다. 전체 기간을 받던 2026-09에는 EDGAR 1분, OpenFIGI 5분, 가격 약 2시간). 실행 중에는 DB가 잠겨 다른 프로세스가 읽을 수 없다.
 2. SEC에 13F-HR을 낸 매니저 수와 `filings`의 새 분기 행 수가 같은지, 가격 실패 로그(`Both sources failed`)에 새 종목이 있는지 확인한다. 보유 중인데 가격이 끊긴 종목은 TROUBLESHOOTING.md의 "가격이 어느 날짜에서 끊김" 항목대로 처리한다.
 3. 새 ticker가 생겼으면 `uv run python scripts/supplement_sector.py`.
 4. `uv run thirteen-f update --skip-collect` — analyze → backtest --all → export → report. Quarto CLI가 없으면 `--skip-report`를 붙인다.
@@ -20,9 +21,9 @@
    - 모든 SQL에 `filings.filed_at <= as_of_date`. `holdings`를 직접 읽으면 `superseded_by IS NULL`, `form_type LIKE '13F-HR%'`도 붙인다 (`single_manager.py`, `multi_manager.py` 참고). `total_scores`·`consensus_quarterly`를 읽으면 분기는 `strategy.latest_public_period`로 고른다 (`score_top_k.py` 참고).
    - `ticker IS NOT NULL`, 비중 합 1.0, 파라미터를 담은 `name`, `params_json` 오버라이드.
 3. `runner.default_suite()`에 등록한다. `--strategy`로도 돌리려면 `cli.py` backtest 명령의 registry에도 추가한다.
-4. SPA에 보이게 하려면 `web/static/hf-data.js`의 `STRATEGY_TYPES`에 type을 추가한다. `matchBackendRun`이 type으로 시작하는 첫 run을 쓰므로 suite에는 type당 전략을 1개만 둔다 — 같은 type이 둘이면 최신 run 하나만 화면에 나온다. 예외로 `SingleManagerClone`은 매니저 이름의 마지막 단어(`(Buffett)`, `(Druckenmiller)`)로 구분되므로 매니저별로 여러 개 둘 수 있다.
+4. Backtest 화면은 `BACKTESTS`의 전략 이름(`name`)별 최신 run을 칩으로 보여 주므로, `backtest --all`에 들어가면 따로 할 일이 없다. 이름이 같으면 최신 run 하나만 나오므로 suite에는 이름이 겹치지 않게 둔다. 칩 툴팁 설명은 `web/static/hf-data.js`의 `STRATEGY_TYPES`(type·name·desc·color)에서 온다.
 
-완료: `uv run pytest tests/unit` 통과, `backtest --all` 출력에 새 전략 행이 있고, `export` 후 Backtest 화면에서 SIM 배지 없이 표시된다.
+완료: `uv run pytest tests/unit` 통과, `backtest --all` 출력에 새 전략 행이 있고, `export` 후 Backtest 화면에 새 전략 칩이 보인다.
 
 파라미터 비교는 `uv run python scripts/sweep_backtests.py`로 한다 — DB 사본(`data/sweep/`)에서 돌리므로 본 DB와 SPA 데이터에 run이 쌓이지 않는다. 설정 목록은 스크립트의 `build_configs`, 결과는 `data/sweep/sweep_results.csv`(전 구간·전반·후반 지표).
 
@@ -93,7 +94,45 @@
 
 ## 수집 결과 보정 (전체 재수집 대신)
 
-- `scripts/supplement.py` — 슬래시 ticker 정규화 + 누락 ticker 가격 재다운로드용 일회성 스크립트. Nygren 처리 로직이 하드코딩돼 있으므로 실행 전에 코드를 읽고 필요한 부분만 쓴다.
 - `scripts/supplement_sector.py` — `cusip_ticker_map.sector/industry`를 yfinance로 채운다.
 
 완료: 보정 대상 행을 다시 조회해 누락이 줄었는지 `data/logs/failed_tickers*.jsonl`과 대조한다.
+
+## 서버 자동 시작
+
+`thirteen-f serve`(http://127.0.0.1:8765)는 장시간 실행이라 `update`에 없다. Windows 로그온 때 자동으로 띄우려면 작업 스케줄러에 등록한다. Smart App Control이 venv 런처를 막아도 뜨도록 `scripts\py.ps1`로 실행한다.
+
+1. 저장소 루트의 PowerShell에서 등록한다. 로그온 트리거를 현재 사용자로 한정해 관리자 창이 아니어도 등록된다.
+
+```powershell
+$root = (Get-Location).Path
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -WorkingDirectory $root `
+  -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$root\scripts\py.ps1`" -m thirteen_f.cli serve"
+$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Seconds 0) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+Register-ScheduledTask -TaskName "13f-serve" -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME) -Settings $settings
+Start-ScheduledTask -TaskName "13f-serve"
+```
+
+2. `curl.exe -s http://127.0.0.1:8765/api/health`가 `{"llm_available": …}`를 돌려주는지 본다.
+3. 해제: `Unregister-ScheduledTask -TaskName 13f-serve -Confirm:$false`.
+
+완료: 다시 로그온한 뒤 `/api/health`가 200을 돌려주고, 브라우저 `http://127.0.0.1:8765/#/plan`에 데이터가 보인다.
+
+## 새 공시 자동 확인·갱신
+
+`scripts/check_and_update.ps1`은 `check-filings`가 exit 3(새 13F-HR)일 때만 `update --skip-report` → `scripts/supplement_sector.py` → `export`를 차례로 돌린다. exit 0이면 그대로 끝나고, 그 밖의 값이면(2 확인 실패, 1 Python 오류, -1 Python을 띄우지 못함) 갱신하지 않는다. 갱신 단계가 하나라도 실패하면 `data/logs/check_and_update.pending`이 남아, 다음 실행은 새 공시가 없어도 갱신 단계를 다시 돈다. 각 단계는 Smart App Control을 피해 `scripts\py.ps1`로 실행하고, 출력은 `data/logs/check_and_update.log`에 시각과 함께 덧붙인다. 기한 전 공시는 대기로 남으므로 새 분기는 기한 다음 날 아침 실행에서 한 번에 반영되고, 기한 뒤에 낸 매니저가 있으면 그날 다시 갱신된다.
+
+1. 저장소 루트의 PowerShell에서 등록한다. 매일 08:00(한국 시간 아침은 미국 장 마감 뒤라 그날 종가가 확정돼 있다)이고, 그 시각에 PC가 꺼져 있었으면 켜진 뒤 실행한다.
+
+```powershell
+$root = (Get-Location).Path
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -WorkingDirectory $root `
+  -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$root\scripts\check_and_update.ps1`""
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable
+Register-ScheduledTask -TaskName "13f-check-filings" -Action $action -Trigger (New-ScheduledTaskTrigger -Daily -At 8am) -Settings $settings
+```
+
+2. 한 번 바로 돌려 본다: `Start-ScheduledTask -TaskName 13f-check-filings` → `Get-Content data\logs\check_and_update.log -Tail 20 -Encoding UTF8`. `(Get-ScheduledTaskInfo -TaskName 13f-check-filings).LastTaskResult`가 0이면 새 공시가 없었거나 갱신까지 마친 것이고, 그 밖의 값은 실패한 단계의 exit code다 (4294967295 = -1은 Python을 띄우지 못한 것 — venv와 Smart App Control을 확인한다).
+3. 해제: `Unregister-ScheduledTask -TaskName 13f-check-filings -Confirm:$false`.
+
+완료: 로그에 그날 날짜의 `> -m thirteen_f.cli check-filings` 줄과 `새 13F-HR 없음`(또는 갱신 단계와 `갱신 완료`)이 있다.

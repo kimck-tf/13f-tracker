@@ -1,4 +1,3 @@
-import pytest
 
 from thirteen_f.analyze.diff import classify_change
 
