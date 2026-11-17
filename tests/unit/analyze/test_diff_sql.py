@@ -173,3 +173,35 @@ def test_put_options_are_not_long_holdings(conn):
         (Q3,),
     ).fetchone()
     assert row == ("hold", 0, 1.0)  # Q1 10주 → Q3 10주, 풋 금액은 포트폴리오 합계에도 없다
+
+
+def test_affiliated_holding_is_left_out_of_signals_and_weights(conn):
+    """매니저 자신의 회사 지분(Ackman 13F의 Pershing Square Inc)은 종목 선택이 아니다 — 시그널을
+    만들지 않고 비중의 분모에도 넣지 않아, 나머지 종목의 비중·확신도가 눌리지 않는다."""
+    compute_signals_quarterly(conn, affiliated={"m1": ["BBB"]})
+    update_conviction_scores(conn)
+    assert _types(conn, "m1", "BBB") == {}
+    # m1 Q3 = BBB 600 + CCC 100. BBB를 빼면 CCC가 포트폴리오 전부다 (넣으면 비중 1/7, 확신도 1/6)
+    row = conn.execute(
+        "SELECT weight_pct, conviction_score FROM signals_quarterly "
+        "WHERE cik = 'm1' AND cusip = 'CCC' AND period_of_report = ?",
+        (Q3,),
+    ).fetchone()
+    assert row == (pytest.approx(1.0), pytest.approx(1.0))
+
+
+def test_affiliated_holding_is_excluded_only_for_the_listed_manager(conn):
+    """같은 종목을 든 다른 매니저(Pershing Square Inc를 든 Klarman)의 보유는 그대로 센다."""
+    compute_signals_quarterly(conn, affiliated={"m1": ["AAA"]})
+    assert _types(conn, "m1", "AAA") == {}
+    assert _types(conn, "m2", "AAA") == {Q1: "new"}
+
+
+def test_affiliated_holdings_reject_an_unknown_manager_label(conn):
+    """label 오타를 조용히 넘기면 제외가 적용되지 않은 채 점수가 계산된다 — 멈추고 알린다.
+    기존 시그널도 지우지 않는다."""
+    compute_signals_quarterly(conn)
+    before = conn.execute("SELECT COUNT(*) FROM signals_quarterly").fetchone()[0]
+    with pytest.raises(ValueError, match="Ackmann"):
+        compute_signals_quarterly(conn, affiliated={"Ackmann": ["BBB"]})
+    assert conn.execute("SELECT COUNT(*) FROM signals_quarterly").fetchone()[0] == before
