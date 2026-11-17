@@ -15,6 +15,20 @@ NON_COMMON_CUSIPS_SQL = (
 )
 
 
+# 매니저별 최신 13F를 쓰는 전략(SingleManagerClone·ConvictionFollow·MultiManager)은 가장 최근에
+# 제출된 분기보다 이만큼(분기 수) 이상 뒤처진 13F를 쓰지 않는다 — 13F를 그만 낸 매니저의 옛
+# 포트폴리오가 계속 남지 않게 (Burry: 2025Q3이 마지막). 한 분기 차이는 제출 시차라 그대로 쓴다.
+STALE_QUARTERS = 2
+
+
+def fresh_period_sql(period_col: str) -> str:
+    """``period_col`` 분기가 오래되지 않았다는 WHERE 조건. ``?`` 하나에 as_of_date를 넣는다."""
+    return (
+        f"date_diff('quarter', {period_col}, (SELECT MAX(period_of_report) FROM filings "
+        f"WHERE form_type LIKE '13F-HR%' AND filed_at <= ?)) < {STALE_QUARTERS}"
+    )
+
+
 def latest_public_period(
     conn: duckdb.DuckDBPyConnection, as_of_date: date, table: str
 ) -> date | None:

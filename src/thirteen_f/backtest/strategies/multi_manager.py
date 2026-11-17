@@ -12,7 +12,7 @@ from datetime import date
 
 import duckdb
 
-from thirteen_f.backtest.strategy import NON_COMMON_CUSIPS_SQL, Strategy
+from thirteen_f.backtest.strategy import NON_COMMON_CUSIPS_SQL, Strategy, fresh_period_sql
 
 
 class MultiManager(Strategy):
@@ -65,6 +65,7 @@ class MultiManager(Strategy):
                   AND f.filed_at <= ?
                   AND f.superseded_by IS NULL
                   AND f.form_type LIKE '13F-HR%'
+                  AND {fresh_period_sql("f.period_of_report")}  -- 13F를 그만 낸 매니저는 뺀다
                 QUALIFY ROW_NUMBER() OVER (
                     PARTITION BY f.cik
                     ORDER BY f.period_of_report DESC, f.filed_at DESC
@@ -97,7 +98,7 @@ class MultiManager(Strategy):
             ORDER BY total_value DESC
             LIMIT ?
             """,
-            [*self.mgr_labels, as_of_date, self.top_k],
+            [*self.mgr_labels, as_of_date, as_of_date, self.top_k],
         ).fetchall()
 
         if not rows:

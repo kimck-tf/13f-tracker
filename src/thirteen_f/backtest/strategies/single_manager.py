@@ -6,7 +6,7 @@ from datetime import date
 
 import duckdb
 
-from thirteen_f.backtest.strategy import Strategy
+from thirteen_f.backtest.strategy import Strategy, fresh_period_sql
 
 
 class SingleManagerClone(Strategy):
@@ -27,16 +27,17 @@ class SingleManagerClone(Strategy):
         if not row:
             return {}
         cik = row[0]
-        # 2. as_of_date 이전 최신 filing (superseded_by가 NULL인 것)
+        # 2. as_of_date 이전 최신 filing (superseded_by가 NULL인 것). 오래된 13F만 남았으면 현금
         latest = conn.execute(
-            """
+            f"""
             SELECT accession_no FROM filings
             WHERE cik = ? AND filed_at <= ? AND superseded_by IS NULL
               AND form_type LIKE '13F-HR%'
+              AND {fresh_period_sql("period_of_report")}
             ORDER BY period_of_report DESC, filed_at DESC
             LIMIT 1
             """,
-            (cik, as_of_date),
+            (cik, as_of_date, as_of_date),
         ).fetchone()
         if not latest:
             return {}

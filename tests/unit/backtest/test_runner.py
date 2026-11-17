@@ -21,7 +21,8 @@ def test_default_suite_uses_sweep_optimized_params():
         "ConvictionFollow(3)",
         "NewBuyOnly(2,15)",
         "Ensemble(ConsensusTopK(3,10):0.5,ConsensusTopK(2,15):0.5)",
-        "MultiManager(4 mgrs, top=20)",
+        "MultiManager(3 mgrs, top=20)",
     ]
     multi = default_suite()[-1]
-    assert multi.mgr_labels == ["Burry", "Dalio", "Druckenmiller", "Tepper"]
+    # macro 4명에서 Burry를 뺐다 — 2025Q3이 마지막 13F다 (2026-11-17)
+    assert multi.mgr_labels == ["Dalio", "Druckenmiller", "Tepper"]
