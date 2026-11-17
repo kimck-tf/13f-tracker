@@ -6,11 +6,11 @@
 
 0. `uv run thirteen-f check-filings` — DB에 없는 13F-HR 원본이 EDGAR에 있으면 매니저·분기·제출일·accession을 한 줄씩 보여 주고 exit 3(1은 Python 오류와 겹쳐 쓰지 않는다), 없으면 `새 13F-HR 없음`과 exit 0, 확인이 실패하면(네트워크·`.env`·DB 잠금) exit 2. 그 분기의 기한(분기말 + 45일, 토·일·연방 공휴일이면 다음 영업일, 그날 미 동부 17:30 = 한국 다음 날 07:30)이 지나지 않은 공시는 "대기"로만 보여 주고 갱신 신호로 쓰지 않는다. collect도 그런 분기의 제출분은 적재하지 않는다 — `latest_public_period`가 DB에 들어온 일부 제출분만으로 그 분기를 공개된 것으로 보고 Plan 탭의 목표 비중을 바꾸지 않게. 그래서 기한 전에 손으로 update해도 새 분기는 들어오지 않는다. 원본을 대체하는 정정본(13F-HR/A RESTATEMENT)도 센다. collect가 적재하지 않는 것은 세지 않는다 — 추가분만 담은 NEW HOLDINGS 정정본(표지를 읽어 판정), DB 최소 분기보다 이른 분기, 대표 CIK도 보고한 분기의 `extra_ciks` 제출분. 매일 자동으로 확인·갱신하려면 아래 "새 공시 자동 확인·갱신".
 1. `uv run thirteen-f update --skip-backtest --skip-export --skip-report` — `update`는 시작할 때 `data/backups/`(Google Drive 동기화 폴더)에 DB 사본을 만들어 최근 3개를 남기고, collect는 DB의 최소 분기부터 수집한다 (`--start`로 바꿀 수 있다). 가격 단계는 종목별 마지막 저장일 10일 전부터만 받고, 배당·분할로 수정 종가가 소급 조정되면 그 종목의 저장 이력 전체를 같은 비율로 재스케일한다 (전체 기간을 다시 받는 것은 겹치는 구간이 한 비율로 설명되지 않는 종목뿐 — 데이터 정정이나 저장 이력 안의 단절). `--start`를 DB의 가장 이른 가격보다 앞당기면 그 실행은 전 종목을 새 시작일부터 받는다. 요청은 시작일이 같은 종목을 50개씩 묶어 보내므로 약 1,650종목에 5분 안팎 걸린다 (2026-10-31 100종목 실측 17.4초, 배치 2번. 배치에서 빠진 종목만 종목당 1번씩 다시 받는다. 전체 기간을 받던 2026-09에는 EDGAR 1분, OpenFIGI 5분, 가격 약 2시간). 실행 중에는 DB가 잠겨 다른 프로세스가 읽을 수 없다.
-2. SEC에 13F-HR을 낸 매니저 수와 `filings`의 새 분기 행 수가 같은지, 가격 실패 로그(`Both sources failed`)에 새 종목이 있는지 확인한다. 보유 중인데 가격이 끊긴 종목은 TROUBLESHOOTING.md의 "가격이 어느 날짜에서 끊김" 항목대로 처리한다.
-3. 새 ticker가 생겼으면 `uv run python scripts/supplement_sector.py`.
-4. `uv run thirteen-f update --skip-collect` — analyze → backtest --all → export → report. Quarto CLI가 없으면 `--skip-report`를 붙인다.
+2. SEC에 13F-HR을 낸 매니저 수와 `filings`의 새 분기 행 수가 같은지, 가격 실패 로그(`Both sources failed`)에 새 종목이 있는지 확인한다. 보유 중인데 가격이 끊긴 종목은 TROUBLESHOOTING.md의 "가격이 어느 날짜에서 끊김" 항목대로 처리한다. 매니저의 최대 보유 종목이 그 매니저 자신의 회사·관계사로 바뀌었으면 `config/scoring.toml [affiliated_holdings]`에 CUSIP을 더한다 (2026Q3 Ackman의 Pershing Square Inc — 두면 그의 나머지 종목 conviction이 한꺼번에 낮아진다).
+3. `uv run python scripts/supplement_sector.py` — 매번 실행한다. 새로 매핑된 ticker의 sector는 NULL이 아니라 `''`라서 `sector IS NULL`로 세면 0으로 보인다 (2026Q3 반영 때 이렇게 세고 건너뛰어 50종목이 빈 채 남았다). 대상이 없으면 바로 끝난다.
+4. `uv run thirteen-f update --skip-collect` — analyze → record-targets → backtest --all → export → report. Quarto CLI가 없으면 `--skip-report`를 붙인다. `update`는 analyze 뒤에 늘 `record-targets`를 돌려(1단계에서도) 그때의 목표를 `target_log`에 쌓는다 — 새 분기가 공개돼 목표가 바뀐 전략마다 한 줄이 생긴다.
 
-완료: `src/thirteen_f/web/data/quarters.json`에 새 분기가 있고, `serve` 중인 브라우저를 새로고침하면 새 분기가 보인다.
+완료: `src/thirteen_f/web/data/quarters.json`에 새 분기가 있고, `serve` 중인 브라우저를 새로고침하면 새 분기가 보인다. `target_log`에 그날 `recorded_at`으로 새 분기(`period_of_report`)의 줄이 있다.
 
 ## 백테스트 전략 추가
 
@@ -20,7 +20,7 @@
 2. `backtest/strategies/<name>.py`에서 `Strategy`를 상속한다.
    - 모든 SQL에 `filings.filed_at <= as_of_date`. `holdings`를 직접 읽으면 `superseded_by IS NULL`, `form_type LIKE '13F-HR%'`도 붙인다 (`single_manager.py`, `multi_manager.py` 참고). `total_scores`·`consensus_quarterly`를 읽으면 분기는 `strategy.latest_public_period`로 고른다 (`score_top_k.py` 참고).
    - `ticker IS NOT NULL`, 비중 합 1.0, 파라미터를 담은 `name`, `params_json` 오버라이드.
-3. `runner.default_suite()`에 등록한다. `--strategy`로도 돌리려면 `cli.py` backtest 명령의 registry에도 추가한다.
+3. `runner.default_suite()`에 등록한다. `--strategy`로도 돌리려면 `cli.py` backtest 명령의 registry에도 추가한다. suite에 든 전략은 `record-targets`가 목표를 `target_log`에 쌓는다 — 전략의 `name`이 그 기록의 키라서, 파라미터를 바꿔 이름이 달라지면 새 전략으로 처음부터 쌓인다. 이름이 그대로인 채 파라미터만 바뀌는 경우(MultiManager의 매니저를 같은 수로 바꿀 때)는 같은 이름 아래 새 줄이 생기고 `params_json`으로 구분한다.
 4. Backtest 화면은 `BACKTESTS`의 전략 이름(`name`)별 최신 run을 칩으로 보여 주므로, `backtest --all`에 들어가면 따로 할 일이 없다. 이름이 같으면 최신 run 하나만 나오므로 suite에는 이름이 겹치지 않게 둔다. 칩 툴팁 설명은 `web/static/hf-data.js`의 `STRATEGY_TYPES`(type·name·desc·color)에서 온다.
 
 완료: `uv run pytest tests/unit` 통과, `backtest --all` 출력에 새 전략 행이 있고, `export` 후 Backtest 화면에 새 전략 칩이 보인다.
@@ -34,7 +34,7 @@
 1. `tests/unit/analyze/`에 실패하는 테스트.
 2. 계산은 `analyze/<signal>.py`, 호출 순서는 `analyze/pipeline.py`, 가중합은 `analyze/score.py` SQL에서 바꾼다.
 3. 점수 성분을 추가·삭제하면 `scoring.toml [weights]`, `ScoreWeights`, `total_scores` 컬럼(→ 아래 스키마 절차)을 함께 바꾸고 가중치 합 1.0을 유지한다.
-4. `analyze` → `backtest --all` → `export`를 다시 실행한다 — 점수를 쓰는 전략 결과가 바뀐다.
+4. `uv run thirteen-f update --skip-collect --skip-report`로 analyze → record-targets → backtest --all → export를 다시 돈다 — 점수를 쓰는 전략 결과가 바뀐다. analyze는 지난 분기 점수까지 다시 계산하므로 과거 목표도 달라질 수 있고, 지금 목표가 바뀐 전략은 `target_log`에 새 줄이 생긴다 (먼저 쌓인 줄은 그대로 남는다). `analyze`만 따로 돌렸으면 `uv run thirteen-f record-targets`도 돌린다.
 
 완료: `uv run pytest tests/unit` 통과, `uv run thirteen-f analyze`가 행 수 통계(`OK: {...}`)를 출력하며 끝난다.
 
@@ -69,7 +69,7 @@
 
 1. `src/thirteen_f/cli.py`에 `@app.command()`를 추가하고, 기존 명령들처럼 import는 함수 본문 안에 둔다 — 한 명령을 실행할 때 다른 명령의 의존성(uvicorn, duckdb 등)을 불러오지 않는다.
 2. 다른 typer 명령 함수를 Python에서 직접 호출하지 않는다 — 인자 기본값이 `OptionInfo` 객체 그대로 들어가 타입 에러가 난다. 여러 명령을 묶을 때는 `update`처럼 `sys.executable -m thirteen_f.cli <args>` subprocess로 호출한다.
-3. `update` 흐름에 넣을 단계면 `run_step([...])`과 `--skip-<name>` 옵션을 함께 추가한다.
+3. `update` 흐름에 넣을 단계면 `run_step([...])`과 `--skip-<name>` 옵션을 함께 추가한다. `record-targets`만 예외다 — 목표 기록을 건너뛰는 실행이 생기지 않게 옵션을 두지 않았다.
 
 완료: `uv run thirteen-f <명령> --help`가 옵션을 보여주고, 새 동작의 테스트가 통과한다.
 

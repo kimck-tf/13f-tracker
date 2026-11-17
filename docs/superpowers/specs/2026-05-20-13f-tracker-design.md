@@ -237,9 +237,9 @@ dev = ["pytest", "pytest-cov", "ruff", "mypy", "vcr-py"]
 # ... 총 15명
 ```
 
-### 4.2 DuckDB 스키마 (12개 테이블)
+### 4.2 DuckDB 스키마 (13개 테이블)
 
-> 정의의 정답은 `scripts/init_db.py`이고, 기존 DB는 같은 파일의 `MIGRATIONS`로 in-place 변경된다. `-- Phase 5` 주석은 구현 후 추가된 부분이다.
+> 정의의 정답은 `scripts/init_db.py`이고, 기존 DB는 같은 파일의 `MIGRATIONS`로 in-place 변경된다. `-- Phase 5`·`-- 2026-11` 주석은 구현 후 추가된 부분이다.
 
 ```sql
 -- 거장 명단
@@ -362,7 +362,8 @@ CREATE TABLE backtest_metrics (
     sharpe DOUBLE, sortino DOUBLE,
     mdd DOUBLE, calmar DOUBLE,
     win_rate_quarterly DOUBLE,
-    bench_total_return DOUBLE, bench_cagr DOUBLE
+    bench_total_return DOUBLE, bench_cagr DOUBLE,
+    bench_mdd DOUBLE, bench_sharpe DOUBLE   -- 2026-11: 같은 구간 벤치마크의 최대 낙폭·Sharpe
 );
 
 -- 백테스트 분기 첫 영업일 목표 비중 (Phase 5)
@@ -372,6 +373,17 @@ CREATE TABLE backtest_holdings (
     ticker         VARCHAR NOT NULL,
     weight         DOUBLE  NOT NULL,
     PRIMARY KEY (run_id, rebalance_date, ticker)
+);
+
+-- 그때그때 지시한 목표 비중의 기록 (2026-11). 쌓기만 한다 — UPDATE·DELETE 금지
+CREATE TABLE target_log (
+    strategy_name    VARCHAR   NOT NULL,
+    recorded_at      TIMESTAMP NOT NULL,
+    as_of            DATE      NOT NULL,     -- 목표를 계산한 기준일
+    period_of_report DATE,                   -- 그때 매니저 전원의 13F가 공개돼 있던 최신 분기
+    targets_json     VARCHAR   NOT NULL,     -- {"<ticker>": 비중}, 현금이면 {}
+    params_json      VARCHAR,                -- Strategy.params_json() — 이름만으로는 전략을 다 가리지 못한다
+    PRIMARY KEY (strategy_name, recorded_at)
 );
 ```
 
