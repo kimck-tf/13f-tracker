@@ -119,7 +119,9 @@ def analyze(
 def backtest(
     strategy: str = typer.Option(None, help="실행할 전략 이름. --all과 동시 사용 금지."),
     all_: bool = typer.Option(False, "--all", help="runner.default_suite()의 전략 모두 실행."),
-    start: str = typer.Option("2013-01-01", help="백테스트 시작일 (YYYY-MM-DD)"),
+    start: str = typer.Option(
+        None, help="백테스트 시작일 (YYYY-MM-DD). 생략하면 DB의 첫 13F 공개일"
+    ),
     end: str = typer.Option(None, help="백테스트 종료일 (YYYY-MM-DD, 기본=오늘)"),
     cost_bps: float = typer.Option(10.0, help="편도 거래비용 (bp)"),
 ) -> None:
@@ -130,6 +132,7 @@ def backtest(
 
     from thirteen_f.backtest.runner import run_suite
     from thirteen_f.core.config import load_settings
+    from thirteen_f.core.db_tools import first_public_date
     from thirteen_f.core.logging import get_logger
 
     if not all_ and not strategy:
@@ -138,15 +141,29 @@ def backtest(
 
     settings = load_settings()
     get_logger(log_dir=Path("data/logs"))
-    s = datetime.fromisoformat(start).date()
+    # 첫 13F 공개 전에는 모든 전략이 현금이다. 그 기간을 넣으면 전략의 연수익률만 낮아지고
+    # 벤치마크는 그대로 올라, 같은 표 안의 비교가 어긋난다
+    s = (
+        datetime.fromisoformat(start).date()
+        if start
+        else first_public_date(settings.duckdb_path) or _date(2013, 1, 1)
+    )
     e = datetime.fromisoformat(end).date() if end else _date.today()
 
     if all_:
         results = run_suite(settings.duckdb_path, s, e, cost_bps=cost_bps)
+        if results:
+            typer.echo(f"기간 {results[0]['start']} ~ {results[0]['end']} · 편도 {cost_bps:g}bp")
         for r in results:
             typer.echo(
                 f"{r['name']:60s} CAGR={r['cagr']*100:6.2f}%  "
                 f"MDD={r['mdd']*100:6.2f}%  Sharpe={r['sharpe']:.2f}"
+            )
+        if results:  # 벤치마크는 전략과 무관하게 같은 구간이라 어느 run의 값이든 같다
+            b = results[0]
+            typer.echo(
+                f"{'SPY (benchmark)':60s} CAGR={b['bench_cagr']*100:6.2f}%  "
+                f"MDD={b['bench_mdd']*100:6.2f}%  Sharpe={b['bench_sharpe']:.2f}"
             )
         return
 
@@ -218,6 +235,32 @@ def targets(
         return
     for ticker, weight in sorted(positions.items(), key=lambda kv: (-kv[1], kv[0])):
         typer.echo(f"  {ticker:8s} {weight * 100:5.1f}%")
+
+
+@app.command()
+def record_targets() -> None:
+    """기본 전략의 오늘 목표 비중을 target_log에 쌓는다 (목표가 바뀐 전략만, 기존 줄은 그대로).
+
+    analyze는 지난 분기 점수까지 다시 계산하므로 규칙·데이터가 바뀌면 과거 목표도 바뀐다. 그때
+    실제로 지시한 목록을 남겨 두는 기록이고, ``update``가 analyze 바로 뒤에 부른다.
+    """
+    from datetime import date as _date
+
+    import duckdb
+
+    from thirteen_f.backtest.target_log import record_targets as record
+    from thirteen_f.core.config import load_settings
+
+    settings = load_settings()
+    conn = duckdb.connect(str(settings.duckdb_path))
+    try:
+        recorded = record(conn, _date.today())
+    finally:
+        conn.close()
+    if recorded:
+        typer.echo(f"목표 기록: {len(recorded)}개 전략 — {', '.join(recorded)}")
+    else:
+        typer.echo("목표 기록: 바뀐 전략 없음")
 
 
 @app.command()
@@ -320,7 +363,7 @@ def update(
     skip_export: bool = typer.Option(False, help="export 단계 건너뛰기 (Phase 5)"),
     skip_report: bool = typer.Option(False, help="report 단계 건너뛰기"),
 ) -> None:
-    """collect → analyze → backtest --all → export → report --latest 순차 실행.
+    """collect → analyze → record-targets → backtest --all → export → report --latest 순차 실행.
 
     ⚠️ typer command 함수를 Python에서 직접 호출하면 OptionInfo 기본값이 그대로
     전달되어 타입 에러 발생. 따라서 subprocess로 자기 자신(thirteen-f CLI)을
@@ -360,6 +403,8 @@ def update(
         run_step(collect_args)
     typer.echo("=== Phase 2: analyze ===")
     run_step(["analyze"])
+    # 건너뛰는 옵션을 두지 않는다 — 화면에 내보내기 전에 그때의 목표가 먼저 쌓여야 한다
+    run_step(["record-targets"])
     if not skip_backtest:
         typer.echo("=== Phase 3: backtest --all ===")
         run_step(["backtest", "--all"])

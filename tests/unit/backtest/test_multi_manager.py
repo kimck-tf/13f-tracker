@@ -149,6 +149,26 @@ def test_multi_manager_per_manager_different_periods(tmp_path):
     c.close()
 
 
+def test_multi_manager_drops_a_manager_two_quarters_behind(conn):
+    """M1은 Q1이 마지막 13F다. M2가 한 분기 앞선 동안은 M1의 Q1을 그대로 쓰고(제출 시차),
+    두 분기 앞서면 M1의 옛 보유 종목은 집계에서 뺀다 (Burry: 2025Q3 뒤 제출 없음)."""
+    for acc, period, filed in [
+        ("a2q2", date(2024, 6, 30), date(2024, 8, 14)),
+        ("a2q3", date(2024, 9, 30), date(2024, 11, 14)),
+    ]:
+        upsert_filing(conn, {
+            "accession_no": acc, "cik": "c2", "form_type": "13F-HR",
+            "period_of_report": period, "filed_at": filed, "is_amendment": False,
+        })
+        upsert_holdings(conn, acc, [
+            {"cusip": "CCC", "name_of_issuer": "Coke", "title_of_class": "COM",
+             "value_usd": 1200, "shares": 20, "share_type": "SH", "put_call": ""},
+        ])
+    s = MultiManager(mgr_labels=["M1", "M2"], top_k=5)
+    assert set(s.get_target_positions(date(2024, 11, 13), conn)) == {"AAPL", "BA", "KO"}
+    assert set(s.get_target_positions(date(2024, 11, 14), conn)) == {"KO"}
+
+
 def test_multi_manager_skips_13f_nt(conn):
     """form_type LIKE '13F-HR%' 필터로 13F-NT는 제외."""
     upsert_filing(conn, {

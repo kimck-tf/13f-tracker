@@ -5,7 +5,7 @@ from pathlib import Path
 import duckdb
 
 from scripts.init_db import init_db
-from thirteen_f.core.db_tools import backup_db, db_start_quarter
+from thirteen_f.core.db_tools import backup_db, db_start_quarter, first_public_date
 
 
 def _db(tmp_path: Path, periods: list[date]) -> Path:
@@ -29,6 +29,12 @@ def test_db_start_quarter_is_the_earliest_filing_quarter(tmp_path):
 def test_db_start_quarter_is_none_for_empty_or_missing_db(tmp_path):
     assert db_start_quarter(_db(tmp_path, [])) is None
     assert db_start_quarter(tmp_path / "nope.duckdb") is None
+
+
+def test_first_public_date_is_none_for_empty_or_missing_db(tmp_path):
+    # 13F가 없으면 시작일을 정할 수 없다 — backtest는 이때 옛 기본값으로 물러난다
+    assert first_public_date(_db(tmp_path, [])) is None
+    assert first_public_date(tmp_path / "nope.duckdb") is None
 
 
 def test_backup_db_copies_file_with_timestamp_name(tmp_path):

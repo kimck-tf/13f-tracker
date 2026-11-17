@@ -26,21 +26,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 uv sync
 cp .env.example .env                        # SEC_USER_AGENT 필수 (비면 load_settings()가 ValueError)
-uv run python scripts/init_db.py            # 12 테이블 생성 + 기존 DB 마이그레이션, 재실행 안전
+uv run python scripts/init_db.py            # 13 테이블 생성 + 기존 DB 마이그레이션, 재실행 안전
 
 uv run thirteen-f collect --start 2024Q1    # 기본값 2011Q1 — 기존 DB와 같은 시작 분기를 명시
 uv run thirteen-f check-filings             # DB에 없는 13F-HR 원본 → 목록 + exit 3 (없음 0, 확인 실패 2)
 uv run thirteen-f analyze                   # signals·consensus·total_scores를 지우고 전체 재계산
-uv run thirteen-f backtest --all --start 2024-01-02   # 기본 8개(Buffett·Druckenmiller 복제 포함), 실행마다 run 누적
-uv run thirteen-f backtest --strategy ScoreTopK --start 2024-01-02
+uv run thirteen-f backtest --all            # 기본 8개(Buffett·Druckenmiller 복제 포함), 실행마다 run 누적. --start 기본값 = 첫 13F 공개일
+uv run thirteen-f backtest --strategy ScoreTopK
 uv run python scripts/sweep_backtests.py    # 파라미터 탐색 — DB 사본(data/sweep/)에서 실행, 결과 CSV
 uv run thirteen-f targets --strategy ConsensusTopK    # 지금 이 전략의 목표 비중 (매매 목록 확인)
+uv run thirteen-f record-targets            # 기본 전략의 오늘 목표를 target_log에 쌓는다 (update가 analyze 뒤에 부른다)
 uv run thirteen-f export                    # DuckDB → src/thirteen_f/web/data/*.json
 uv run thirteen-f serve                     # http://127.0.0.1:8765, 장시간 실행이라 update에 없음
 uv run thirteen-f report --latest --open    # Quarto CLI + `uv sync --extra report` 필요 → reports/output/_latest/
-uv run thirteen-f update                    # collect(DB 최소 분기부터, --start로 변경) → analyze → backtest --all → export → report, --skip-* 로 제외
+uv run thirteen-f update                    # collect(DB 최소 분기부터, --start로 변경) → analyze → record-targets → backtest --all → export → report, --skip-* 로 제외
 
-uv run pytest tests/unit                    # 회귀 기준: 273건, 약 35초, 네트워크 불필요
+uv run pytest tests/unit                    # 회귀 기준: 303건, 약 45초, 네트워크 불필요
 uv run pytest tests/unit/web/test_server.py::test_root_serves_static_index_html   # 단일 테스트
 uv run pytest tests/unit -k consensus       # 키워드 필터
 uv run pytest tests/integration             # 4건 (= -m integration), collect e2e는 VCR 카세트가 없으면 skip
@@ -56,6 +57,7 @@ DuckDB 파일 하나(`data/13f.duckdb`, git 밖)가 단계 사이의 유일한 �
 ```
 managers.yaml·EDGAR·OpenFIGI·yfinance ─ collect ─▶ managers, filings, holdings, cusip_ticker_map, prices
                                          analyze ─▶ signals_quarterly, consensus_quarterly, total_scores
+                                  record-targets ─▶ target_log (쌓기만)
                                         backtest ─▶ backtest_runs, _curves, _metrics, _holdings
 DuckDB ─ export ─▶ web/data/*.json ─ serve(FastAPI) ─▶ SPA(web/static), /api/ask ─▶ Gemini
        └ report ─▶ Quarto(reports/quarto) ─▶ reports/output/<분기>/
@@ -78,6 +80,11 @@ DuckDB ─ export ─▶ web/data/*.json ─ serve(FastAPI) ─▶ SPA(web/stati
 - **점수 가중치** (Spec §6.1): `config/scoring.toml [weights]` 합이 1.0(±0.01)이 아니면 `load_weights`가 예외를 낸다. 기본값 consensus 0.30, conviction 0.30, continuity 0.20, cloning_quality 0.20.
 - **CUSIP → ticker** (Spec §5.1 1e): 첫 글자가 알파벳인 CINS 코드(외국 소재 미국 상장사, 예: Chubb)는 `ID_CUSIP`이 아니라 `ID_CINS`로 조회해야 찾는다. OpenFIGI 결과 중 US primary 거래소 코드(`cusip_mapper.US_PRIMARY_EXCH_CODES`)만 채택하고 `/`·`.`은 `-`로 바꾼다 (yfinance 표기). 매핑 실패는 `ticker = NULL`로 두고 전략에서 제외한다.
 - **집계 전략의 종목 단위**: ConsensusTopK·ScoreTopK·NewBuyOnly·ConvictionFollow·MultiManager는 `is_etf` 종목을 빼고 발행사(CUSIP 앞 6자리)당 한 클래스만 쓴다 — 대표는 보통주이고 워런트·권리(13F 표기 `*W EXP …`, `strategy.NON_COMMON_CUSIPS_SQL`)는 뒤로 미루며, ConvictionFollow는 거장 사이에서도 합친다. 풋옵션은 보유로 세지 않는다 (`analyze/diff.py`·MultiManager·복제). 두 규칙은 순위·`LIMIT` 전에 적용한다 (`tests/unit/backtest/test_score_top_k.py`·`test_other_strategies.py`·`test_multi_manager.py`). 복제(SingleManagerClone)는 거장 보유 그대로.
+- **대표 클래스 유지**: ConsensusTopK·ScoreTopK·NewBuyOnly는 한번 고른 대표 클래스를 그 클래스를 든 거장이 남아 있는 동안 바꾸지 않는다 (`strategy.ISSUER_CLASS_CANDIDATES_SQL`·`ISSUER_CLASS_ORDER_SQL`). 분기마다 `total_score`가 높은 클래스로 바꾸면 GOOG↔GOOGL처럼 같은 회사를 팔고 다시 산다. 발행사의 순위는 대표 클래스가 아니라 클래스 중 최고 `total_score`로 매긴다 — 대표 클래스 점수로 매기면 종목 선택이 달라진다.
+- **자기 회사·관계사 지분**: `config/scoring.toml [affiliated_holdings]`(매니저 label → CUSIP)의 보유는 `analyze/diff.py`가 시그널에서 빼고 비중의 분모에도 넣지 않는다. 넣으면 그 매니저의 나머지 종목 conviction이 눌린다 (Ackman 2026Q3: Pershing Square Inc가 13F의 33.5%). `holdings`를 직접 읽는 MultiManager·복제와 SPA 보유 화면은 13F 그대로다.
+- **오래된 13F**: 매니저별 최신 13F를 쓰는 SingleManagerClone·ConvictionFollow·MultiManager는 가장 최근에 제출된 분기보다 2분기 이상 뒤처진 13F를 쓰지 않는다 (`strategy.fresh_period_sql`·`STALE_QUARTERS`). 13F를 그만 낸 매니저(Burry, 2025Q3이 마지막)의 옛 포트폴리오가 목표에 남지 않게 — 그 매니저의 복제는 그때부터 현금이다. 한 분기 차이는 제출 시차라 그대로 쓴다.
+- **평가 구간**: `backtest`는 `--start`가 없으면 첫 13F 공개일부터 돈다 (`core/db_tools.py:first_public_date`). 그 전의 현금 구간을 넣으면 전략의 연수익률만 낮아지고 SPY는 그대로라 비교가 어긋난다. 전략의 MDD·Sharpe·Calmar는 같은 run에 저장된 SPY의 값(`backtest_metrics.bench_*`)과 견주고, 수치를 인용할 때는 구간(`start`~`end`)을 함께 적는다.
+- **`target_log`는 쌓기만 한다**: 그때그때 지시한 목표 비중의 기록이다 (`backtest/target_log.py`). analyze가 지난 분기 점수까지 다시 계산하고 백테스트가 지금의 규칙으로 과거를 다시 그리므로, 실제로 지시했던 목록은 여기에만 남는다. UPDATE·DELETE 하지 않고, analyze·backtest·export 어느 단계도 건드리지 않는다. `update`에 건너뛰는 옵션도 두지 않는다.
 - **스키마 SSOT**: `scripts/init_db.py`. Spec §4.2의 DDL은 이와 같게 유지한다 (변경 절차는 `_claude_docs/WORKFLOWS.md`).
 
 ## Workflow Rules
@@ -86,5 +93,5 @@ DuckDB ─ export ─▶ web/data/*.json ─ serve(FastAPI) ─▶ SPA(web/stati
 - **TDD**: 실패하는 테스트 → 최소 구현 → `uv run pytest tests/unit` 전체 통과 → 커밋 (plan의 step 단위).
 - **stage는 파일을 지정해서** (`git add <path>`): 루트에 커밋 대상이 아닌 미추적 파일(`handoff/`, `data/logs/`, `reports/output/`, `.omc/` 등)이 있어 `git add .`나 `-A`는 이것들을 함께 끌어들인다.
 - **정적 검사**: ruff는 `src tests scripts` 전체 0건을 유지한다. mypy는 기준선이 남아 있어 수정한 파일의 위반 수가 수정 전보다 늘지 않게 한다. 기존 mypy 위반 일괄 정리는 요청받았을 때만 한다 — 무관한 diff가 섞인다.
-- **`data/13f.duckdb`는 git 밖의 유일본**이다 (재수집에 수십 분 이상 + API 한도). 파일 삭제, 테이블 DROP·DELETE, 재생성 전에는 사용자에게 확인하고 복사본을 만든다. `scripts/init_db.py` 재실행은 idempotent라 여기에 해당하지 않는다. `update`는 시작할 때 `data/backups/`(Google Drive 동기화 폴더)에 최근 3개를 남긴다.
+- **`data/13f.duckdb`는 git 밖의 유일본**이다 (재수집에 수십 분 이상 + API 한도, `target_log`는 재수집으로도 되살릴 수 없다). 파일 삭제, 테이블 DROP·DELETE, 재생성 전에는 사용자에게 확인하고 복사본을 만든다. `scripts/init_db.py` 재실행은 idempotent라 여기에 해당하지 않는다. `update`는 시작할 때 `data/backups/`(Google Drive 동기화 폴더)에 최근 3개를 남긴다.
 - **frontend는 `src/thirteen_f/web/static/`에서만 수정**한다. `handoff/design/`은 구현 전 디자인 원본이며, `handoff/`의 구조 권고(Next.js, "hf-data.js가 알고리즘 정답")는 실제 구현과 다르다.

@@ -6,7 +6,7 @@ from datetime import date
 
 import duckdb
 
-from thirteen_f.backtest.strategy import NON_COMMON_CUSIPS_SQL, Strategy
+from thirteen_f.backtest.strategy import NON_COMMON_CUSIPS_SQL, Strategy, fresh_period_sql
 
 
 class ConvictionFollow(Strategy):
@@ -20,7 +20,7 @@ class ConvictionFollow(Strategy):
     def get_target_positions(
         self, as_of_date: date, conn: duckdb.DuckDBPyConnection
     ) -> dict[str, float]:
-        # 각 거장의 최신 분기에서 conviction 상위 K개 종목 수집
+        # 각 거장의 최신 분기에서 conviction 상위 K개 종목 수집. 13F를 그만 낸 거장은 뺀다
         rows = conn.execute(
             f"""
             WITH latest_per_cik AS (
@@ -31,6 +31,7 @@ class ConvictionFollow(Strategy):
                     WHERE f.cik = s.cik AND f.period_of_report = s.period_of_report
                       AND f.filed_at <= ?
                 )
+                  AND {fresh_period_sql("s.period_of_report")}
                 GROUP BY cik
             ),
             cand AS (
@@ -71,7 +72,7 @@ class ConvictionFollow(Strategy):
             FROM by_ticker
             GROUP BY issuer
             """,
-            (as_of_date, self.top_k),
+            (as_of_date, as_of_date, self.top_k),
         ).fetchall()
         if not rows:
             return {}

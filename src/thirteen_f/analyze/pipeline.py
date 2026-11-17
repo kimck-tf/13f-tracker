@@ -9,7 +9,7 @@ import duckdb
 from thirteen_f.analyze.consensus import compute_consensus
 from thirteen_f.analyze.continuity import update_continuity_scores
 from thirteen_f.analyze.conviction import update_conviction_scores
-from thirteen_f.analyze.diff import compute_signals_quarterly
+from thirteen_f.analyze.diff import compute_signals_quarterly, load_affiliated
 from thirteen_f.analyze.score import compute_total_scores, load_weights
 
 logger = logging.getLogger(__name__)
@@ -21,9 +21,10 @@ def run_analyze(
     diff_threshold: float = 0.05,
 ) -> dict[str, int]:
     weights = load_weights(scoring_toml)
+    affiliated = load_affiliated(scoring_toml)
     conn = duckdb.connect(str(db_path))
     try:
-        n_signals = compute_signals_quarterly(conn, diff_threshold)
+        n_signals = compute_signals_quarterly(conn, diff_threshold, affiliated)
         logger.info("signals_quarterly: %d rows", n_signals)
         n_conv = update_conviction_scores(conn)
         logger.info("conviction updated: %d rows", n_conv)

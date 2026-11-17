@@ -95,3 +95,20 @@ def test_put_rows_excluded(conn):
     s = SingleManagerClone(label="Buffett")
     targets = s.get_target_positions(as_of_date=date(2024, 6, 1), conn=conn)
     assert targets == {"AAPL": pytest.approx(0.8), "B": pytest.approx(0.2)}
+
+
+def test_clone_goes_to_cash_once_the_manager_is_two_quarters_behind(conn):
+    """13F를 그만 낸 매니저(Burry: 2025Q3이 마지막)의 옛 포트폴리오를 계속 복제하지 않는다.
+    다른 매니저가 한 분기 앞선 것은 제출 시차라 그대로 쓰고, 두 분기 앞서면 목표가 없다(현금)."""
+    upsert_manager(conn, {"cik": "0000000002", "name": "Other", "label": "Other",
+                          "fund": "F", "style": "value", "active_since": 2000,
+                          "cloning_score_weight": 1.0})
+    upsert_filing(conn, {"accession_no": "o2", "cik": "0000000002",
+                         "form_type": "13F-HR", "period_of_report": date(2024, 6, 30),
+                         "filed_at": date(2024, 8, 14), "is_amendment": False})
+    upsert_filing(conn, {"accession_no": "o3", "cik": "0000000002",
+                         "form_type": "13F-HR", "period_of_report": date(2024, 9, 30),
+                         "filed_at": date(2024, 11, 14), "is_amendment": False})
+    s = SingleManagerClone(label="Buffett")
+    assert set(s.get_target_positions(date(2024, 11, 13), conn)) == {"AAPL", "B"}
+    assert s.get_target_positions(date(2024, 11, 14), conn) == {}

@@ -5,3 +5,15 @@ consensus = 0.30
 conviction = 0.30
 continuity = 0.20
 cloning_quality = 0.20
+
+# 매니저 자신의 회사·관계사 지분 — 종목 선택이 아니므로 시그널·비중·확신도 계산에서 뺀다
+# (analyze/diff.py). 키는 managers.yaml의 label, 값은 13F에 적힌 CUSIP 9자리.
+# 같은 종목을 든 다른 매니저의 보유는 그대로 센다. label이 managers에 없으면 analyze가 멈춘다.
+[affiliated_holdings]
+Ackman = [
+    "71531U102",  # Pershing Square Inc (PS) — 그의 운용사. 2026Q3부터 13F에 잡힌다
+    "71531T105",  # Pershing Square USA Ltd (PSUS) — 그가 운용하는 폐쇄형 펀드
+]
+Icahn = [
+    "451100101",  # Icahn Enterprises LP (IEP) — 그의 지주회사
+]

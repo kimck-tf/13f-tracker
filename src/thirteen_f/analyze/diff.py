@@ -1,6 +1,8 @@
 """Quarter-over-quarter change classification. Spec §6.1."""
 from __future__ import annotations
 
+import tomllib
+from pathlib import Path
 from typing import Literal
 
 import duckdb
@@ -27,28 +29,54 @@ def classify_change(
     return "hold"
 
 
+def load_affiliated(path: Path) -> dict[str, list[str]]:
+    """scoring.toml `[affiliated_holdings]` — 매니저 label → 그 매니저 자신의 회사·관계사 CUSIP."""
+    with path.open("rb") as f:
+        return tomllib.load(f).get("affiliated_holdings", {})
+
+
 def compute_signals_quarterly(
-    conn: duckdb.DuckDBPyConnection, threshold: float = 0.05
+    conn: duckdb.DuckDBPyConnection,
+    threshold: float = 0.05,
+    affiliated: dict[str, list[str]] | None = None,
 ) -> int:
     """holdings 테이블에서 거장×CUSIP×분기 단위 변화 시그널 계산 후 signals_quarterly 적재.
 
     weight_pct = value_usd / 거장의 분기 총 가치.
     change_type, shares_change, value_change_usd 계산.
     전량 매도한 종목은 다음 제출 분기에 exit 행(0주)으로 남고, 공백 뒤 재진입은 new다.
+    affiliated(매니저 label → CUSIP 목록)는 매니저 자신의 회사·관계사 지분이다. 종목 선택이 아니므로
+    시그널을 만들지 않고 총 가치에도 넣지 않는다 — 넣으면 그 매니저의 나머지 종목 비중·확신도가
+    눌린다 (Ackman 2026Q3: Pershing Square Inc가 13F의 33.5%).
     Returns rows inserted.
     """
+    pairs = [(label, cusip) for label, cusips in (affiliated or {}).items() for cusip in cusips]
+    known = {r[0] for r in conn.execute("SELECT label FROM managers").fetchall()}
+    unknown = sorted({label for label, _ in pairs} - known)
+    if unknown:
+        raise ValueError(f"affiliated_holdings: managers에 없는 label {unknown}")
     conn.execute("DELETE FROM signals_quarterly")
     # 최신 정정본만 사용 (superseded_by IS NULL)
     conn.execute(
         """
         INSERT INTO signals_quarterly
-        WITH effective AS (
+        WITH affiliated AS (
+            SELECT mg.cik, a.cusip
+            FROM (
+                SELECT UNNEST(CAST(? AS VARCHAR[])) AS label, UNNEST(CAST(? AS VARCHAR[])) AS cusip
+            ) a
+            JOIN managers mg ON mg.label = a.label
+        ),
+        effective AS (
             SELECT h.accession_no, f.cik, f.period_of_report, h.cusip,
                    h.shares, h.value_usd
             FROM holdings h
             JOIN filings f ON h.accession_no = f.accession_no
             WHERE f.superseded_by IS NULL
               AND UPPER(h.put_call) <> 'PUT'  -- 풋은 보유가 아니다 (복제 전략과 같은 기준)
+              AND NOT EXISTS (
+                  SELECT 1 FROM affiliated a WHERE a.cik = f.cik AND a.cusip = h.cusip
+              )
         ),
         agg_per_filing AS (
             -- 같은 (filing, cusip)의 콜/일반주가 여러 줄일 수 있으므로 합산
@@ -118,6 +146,6 @@ def compute_signals_quarterly(
         -- 보유 행 + 청산 분기 행만 (청산 뒤 0주 분기는 남기지 않는다)
         WHERE shares > 0 OR COALESCE(prev_shares, 0) > 0
         """,
-        (threshold, threshold),
+        ([p[0] for p in pairs], [p[1] for p in pairs], threshold, threshold),
     )
     return conn.execute("SELECT COUNT(*) FROM signals_quarterly").fetchone()[0]

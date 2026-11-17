@@ -22,15 +22,19 @@ function BacktestScreen({ route, quarter, setQuarter }) {
     // backend equity·benchEquity는 NAV 금액이라 "시작 $1.00" 차트용으로 이 전략의 초기 NAV로 나눈다
     // (벤치마크도 같은 값으로 나눠 두 곡선의 상대 위치를 유지한다)
     const base = r.equity[0] || 1;
+    // equity[0]은 백테스트 시작일의 NAV이고 baseQuarter(시작 직전 분기말) 자리에 놓인다.
+    // equity[k]는 그 뒤 k번째 분기말이다. baseQuarter가 없는 옛 export는 QUARTERS[0]으로 본다
+    const baseQ = quarterIndexOf(r.baseQuarter || Q_DATES[0]);
     return {
       strategy: s,
       data: {
+        baseQ,
         equity: r.equity.map(v => v / base),
         dd: r.dd || [],
-        // backend qrets[0]은 첫 분기 자리를 채운 0 — qrets[i] = equity[i] → equity[i+1]로 맞춘다
+        // backend qrets[0]은 첫 점 자리를 채운 0 — qrets[i] = equity[i] → equity[i+1]로 맞춘다
         qrets: (r.qrets || []).slice(1),
         benchEquity: (r.benchEquity || []).map(v => v / base),
-        holdingsLog: backendHoldingsLog(r.holdingsLog),
+        holdingsLog: backendHoldingsLog(r.holdingsLog, baseQ),
         cagr: m.cagr ?? 0,
         sharpe: m.sharpe ?? 0,
         sortino: m.sortino ?? 0,
@@ -64,6 +68,15 @@ function BacktestScreen({ route, quarter, setQuarter }) {
   // backend maxDD는 양수 비율(0.32 = 32% 낙폭)이라 가장 깊은 낙폭은 최댓값이다
   const deepestMDD = results.length ? Math.max(...results.map(r => r.data.maxDD)) : 0;
   const benchCAGR = results[0]?.data.benchCagr || 0;
+  // 벤치마크의 낙폭·Sharpe와 계산 구간은 첫 결과 run의 값 — backtest --all은 모든 전략을 같은
+  // 구간으로 돌리므로 어느 run이든 같다. 2026-11 전에 만든 run에는 없다(null → "—")
+  const benchRun = results[0]?.strategy.run;
+  const benchMDD = benchRun?.metrics?.benchMaxDD ?? null;
+  const benchSharpe = benchRun?.metrics?.benchSharpe ?? null;
+  const benchCalmar = benchMDD ? benchCAGR / benchMDD : null;
+  const windowLabel = benchRun?.start ? `${benchRun.start} ~ ${benchRun.end}` : "구간 정보 없음";
+  const chartBaseQ = results[0]?.data.baseQ ?? quarterIndexOf(Q_DATES[0]);
+  const num2 = v => v == null ? "—" : v.toFixed(2);
 
   function toggleStrategy(id) {
     setStrategies(list => list.map(s => s.id === id ? { ...s, on: !s.on } : s));
@@ -104,7 +117,7 @@ function BacktestScreen({ route, quarter, setQuarter }) {
           <Stat label="BEST CAGR" value={<span className="pos">{fmtPct(bestCAGR, { signed: true })}</span>} />
           <Stat label="BEST SHARPE" value={<span className="pos">{bestSharpe.toFixed(2)}</span>} />
           <Stat label="DEEPEST MDD" value={<span className="neg">{fmtPct(deepestMDD)}</span>} />
-          <Stat label="BENCH CAGR" value={<span className="warn-c">{fmtPct(benchCAGR, { signed: true })}</span>} sub="S&P 500 (SPY)" />
+          <Stat label="BENCH CAGR" value={<span className="warn-c">{fmtPct(benchCAGR, { signed: true })}</span>} sub={benchMDD == null ? "S&P 500 (SPY)" : `SPY · MDD ${fmtPct(benchMDD, { decimals: 1 })} · Sharpe ${num2(benchSharpe)}`} />
         </div>
 
         {/* Strategy chips — one per backend run name, click the dot to mute */}
@@ -136,13 +149,13 @@ function BacktestScreen({ route, quarter, setQuarter }) {
         </div>
 
         {/* Equity curves chart */}
-        <Section title="Cumulative return (normalized)" sub={`starting $1.00 · ${results.length} strategies + benchmark · ${costLabel} bps · backend run`} pad={false}>
+        <Section title="Cumulative return (normalized)" sub={`starting $1.00 · ${windowLabel} · ${results.length} strategies + benchmark · ${costLabel} bps · backend run`} pad={false}>
           <LineChart
             series={equitySeries}
             w={1120} h={300}
             padding={{ l: 60, r: 12, t: 16, b: 30 }}
             formatY={v => v.toFixed(2) + "×"}
-            formatX={i => quarterLabelAt(i)}
+            formatX={i => quarterLabelAt(chartBaseQ + i)}
             asPct
           />
         </Section>
@@ -154,12 +167,12 @@ function BacktestScreen({ route, quarter, setQuarter }) {
             w={1120} h={200}
             padding={{ l: 60, r: 12, t: 16, b: 30 }}
             formatY={v => fmtPct(v, { decimals: 1 })}
-            formatX={i => quarterLabelAt(i)}
+            formatX={i => quarterLabelAt(chartBaseQ + i)}
           />
         </Section>
 
         {/* Metrics comparison table */}
-        <Section title="Metrics comparison" sub="across all active strategies + benchmark · sort by any column">
+        <Section title="Metrics comparison" sub={`${windowLabel} · across all active strategies + benchmark · sort by any column`}>
           <Table
             cols={[
               { key: "lead", label: "★", w: 36, sortable: false, render: r => r._lead ? <span className="mono" style={{ color: "var(--accent)" }}>★</span> : null },
@@ -172,11 +185,11 @@ function BacktestScreen({ route, quarter, setQuarter }) {
               ), value: r => r.type },
               { key: "cagr", label: "CAGR", w: 80, align: "right", render: r => <span className={"mono num b " + (r.cagr >= 0 ? "pos" : "neg")}>{fmtPct(r.cagr, { signed: true })}</span>, value: r => r.cagr },
               { key: "alpha", label: "α vs SPX", w: 80, align: "right", render: r => <Delta value={r.alpha} kind="pct" />, value: r => r.alpha },
-              { key: "sharpe", label: "SHARPE", w: 70, align: "right", render: r => <span className="mono num b">{r.sharpe.toFixed(2)}</span>, value: r => r.sharpe },
-              { key: "sortino", label: "SORTINO", w: 80, align: "right", render: r => <span className="mono num">{r.sortino.toFixed(2)}</span>, value: r => r.sortino },
-              { key: "calmar", label: "CALMAR", w: 70, align: "right", render: r => <span className="mono num">{r.calmar.toFixed(2)}</span>, value: r => r.calmar },
-              { key: "maxDD", label: "MAX DD", w: 80, align: "right", render: r => <span className="mono num neg">{fmtPct(r.maxDD)}</span>, value: r => r.maxDD },
-              { key: "hit", label: "HIT %", w: 70, align: "right", render: r => <span className="mono num">{fmtPct(r.hitRate, { decimals: 0 })}</span>, value: r => r.hitRate },
+              { key: "sharpe", label: "SHARPE", w: 70, align: "right", render: r => <span className="mono num b">{num2(r.sharpe)}</span>, value: r => r.sharpe ?? -Infinity },
+              { key: "sortino", label: "SORTINO", w: 80, align: "right", render: r => <span className="mono num">{num2(r.sortino)}</span>, value: r => r.sortino ?? -Infinity },
+              { key: "calmar", label: "CALMAR", w: 70, align: "right", render: r => <span className="mono num">{num2(r.calmar)}</span>, value: r => r.calmar ?? -Infinity },
+              { key: "maxDD", label: "MAX DD", w: 80, align: "right", render: r => <span className="mono num neg">{fmtPct(r.maxDD)}</span>, value: r => r.maxDD ?? -Infinity },
+              { key: "hit", label: "HIT %", w: 70, align: "right", render: r => <span className="mono num">{fmtPct(r.hitRate, { decimals: 0 })}</span>, value: r => r.hitRate ?? -Infinity },
             ]}
             rows={[
               ...results.map(r => ({
@@ -200,8 +213,9 @@ function BacktestScreen({ route, quarter, setQuarter }) {
                 type: "Benchmark",
                 summary: "(S&P 500 · SPY)",
                 cagr: benchCAGR, alpha: 0,
-                sharpe: 0, sortino: 0, calmar: 0,
-                maxDD: 0, hitRate: 0.5,
+                // 같은 구간의 SPY 값. Sortino·분기 승률은 backend가 내지 않아 비워 둔다
+                sharpe: benchSharpe, sortino: null, calmar: benchCalmar,
+                maxDD: benchMDD, hitRate: null,
               },
             ]}
             rowKey={r => r._id}
@@ -229,7 +243,7 @@ function BacktestScreen({ route, quarter, setQuarter }) {
                 <BarChart values={lead.data.qrets} w={560} h={120} signed formatY={v => fmtPct(v, { decimals: 1 })} />
                 <div className="bt-qrets mono">
                   {lead.data.qrets.map((v, i) => (
-                    <div key={i} className="bt-qret"><span className="bt-qret-l">{quarterLabelAt(i + 1)}</span><Delta value={v} kind="pct" decimals={1} /></div>
+                    <div key={i} className="bt-qret"><span className="bt-qret-l">{quarterLabelAt(lead.data.baseQ + i + 1)}</span><Delta value={v} kind="pct" decimals={1} /></div>
                   ))}
                 </div>
               </div>
@@ -245,7 +259,7 @@ function BacktestScreen({ route, quarter, setQuarter }) {
                     const next = log.q >= 0 && log.q + 1 < lead.data.equity.length ? lead.data.equity[log.q + 1] / lead.data.equity[log.q] - 1 : 0;
                     return (
                       <div key={i} className="bt-comp-row">
-                        <div className="bt-comp-q mono"><span className="b">{quarterLabelAt(log.q)}</span><span className="muted"> → {quarterLabelAt(log.q + 1)}</span></div>
+                        <div className="bt-comp-q mono"><span className="b">{quarterLabelAt(lead.data.baseQ + log.q)}</span><span className="muted"> → {quarterLabelAt(lead.data.baseQ + log.q + 1)}</span></div>
                         <div className="bt-comp-h">
                           {log.picks.slice(0, 12).map(p => (
                             <button key={p.ticker} className="bt-comp-tk" onClick={() => navigate("/stocks/" + p.ticker)} title={`${p.ticker} · ${fmtPct(p.weight, { decimals: 1 })}`}>
@@ -277,18 +291,15 @@ function nextColor(existing) {
 }
 
 // helper — backend holdingsLog [{date, holdings}] → 위 렌더링이 쓰는 prototype 형태 [{q, picks}].
-// q = 리밸런스일 직전에 끝난 분기의 QUARTERS 인덱스라서 "q → q+1" 구간의 수익률이 equity[q] → equity[q+1]이다.
-// backend equity는 분기말마다 한 점이고 QUARTERS[0]과 같은 분기에서 시작한다고 본다 (차트 x축과 같은 가정).
-function backendHoldingsLog(log) {
-  const base = quarterIndexOf(Q_DATES[0]);
-  return (log || []).map(entry => ({ q: quarterIndexOf(entry.date) - 1 - base, picks: entry.holdings || [] }));
+// q = 리밸런스일 직전에 끝난 분기가 equity에서 몇 번째 점인지(baseQ 분기가 0번)라서, "q → q+1" 구간의
+// 수익률이 equity[q] → equity[q+1]이다.
+function backendHoldingsLog(log, baseQ) {
+  return (log || []).map(entry => ({ q: quarterIndexOf(entry.date) - 1 - baseQ, picks: entry.holdings || [] }));
 }
 
-// helper — QUARTERS[0]부터 k번째 분기의 라벨. 백테스트는 최신 13F 분기 뒤(진행 중인 분기)까지
-// 이어지므로 Q_LABELS 범위 밖은 계산해서 같은 형식("Q3'26")으로 만든다.
-function quarterLabelAt(k) {
-  if (k >= 0 && k < Q_LABELS.length) return Q_LABELS[k];
-  const qi = quarterIndexOf(Q_DATES[0]) + k;
+// helper — 분기 인덱스(quarterIndexOf와 같은 연도*4 + 분기) → 라벨. quarters.json의 Q_LABELS와 같은
+// 형식("Q3'26")이고, 백테스트는 최신 13F 분기 뒤(진행 중인 분기)까지 이어지므로 계산해서 만든다.
+function quarterLabelAt(qi) {
   return `Q${qi % 4 + 1}'${String(Math.floor(qi / 4)).slice(-2)}`;
 }
 

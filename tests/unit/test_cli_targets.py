@@ -95,6 +95,23 @@ def test_targets_defaults_to_today(monkeypatch: pytest.MonkeyPatch) -> None:
     assert str(date.today()) in result.output
 
 
+def test_record_targets_logs_todays_targets_once(db: Path) -> None:
+    """`record-targets`는 기본 전략의 오늘 목표를 target_log에 쌓고, 바뀐 것이 없으면 더하지
+    않는다."""
+    first = CliRunner().invoke(app, ["record-targets"])
+    assert first.exit_code == 0, first.output
+    assert "8개 전략" in first.output and "ConsensusTopK(3,10)" in first.output
+    second = CliRunner().invoke(app, ["record-targets"])
+    assert second.exit_code == 0, second.output
+    assert "바뀐 전략 없음" in second.output
+    c = duckdb.connect(str(db), read_only=True)
+    rows = c.execute(
+        "SELECT as_of, targets_json FROM target_log WHERE strategy_name = 'ConsensusTopK(3,10)'"
+    ).fetchall()
+    c.close()
+    assert rows == [(date.today(), '{"AAA": 0.5, "BBB": 0.5}')]
+
+
 def test_targets_drops_tickers_without_recent_prices_like_the_backtest(db: Path) -> None:
     """엔진은 마지막 가격이 10일보다 오래된 종목을 빼고 나머지에 비중을 나눈다 — targets도 같게.
     BBB의 마지막 가격(04-01)은 시장의 마지막 날(06-01)보다 두 달 이르다."""

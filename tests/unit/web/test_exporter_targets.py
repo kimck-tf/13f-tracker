@@ -124,19 +124,28 @@ def test_export_targets_recommends_best_calmar_with_enough_positions(conn, tmp_p
             (run_id, name, date(2024, 12, 1) if run_id != "r0" else date(2024, 1, 1)),
         )
         conn.execute(
-            "INSERT INTO backtest_metrics VALUES (?, 0.3, 0.25, 1.5, 1.8, 0.12, ?, 0.7, 0.2, 0.19)",
+            "INSERT INTO backtest_metrics VALUES "
+            "(?, 0.3, 0.25, 1.5, 1.8, 0.12, ?, 0.7, 0.2, 0.19, 0.18, 1.1)",
             (run_id, calmar),
         )
         conn.executemany(
             "INSERT INTO backtest_holdings VALUES (?, DATE '2024-07-01', ?, ?)",
             [(run_id, f"T{i}", 1.0 / n_pos) for i in range(n_pos)],
         )
+    conn.executemany(
+        "INSERT INTO backtest_curves VALUES ('r1', ?, 1.0, 1.0, 10)",
+        [(date(2024, 5, 13),), (date(2024, 8, 30),)],
+    )
     export_targets(conn, tmp_path, as_of=date(2024, 9, 1))
     data = _load(tmp_path)
     assert data["recommended"] == "ConsensusTopK(3,10)"
     cons = _by_name(data, "ConsensusTopK(3,10)")
     assert cons["metrics"]["calmar"] == pytest.approx(2.0)
     assert cons["metrics"]["avgPositions"] == pytest.approx(10.0)
+    # 같은 구간의 SPY 지표와 그 구간(곡선의 첫날·마지막 날)을 함께 낸다
+    assert cons["metrics"]["benchMaxDD"] == pytest.approx(0.18)
+    assert cons["metrics"]["benchSharpe"] == pytest.approx(1.1)
+    assert (cons["metrics"]["start"], cons["metrics"]["end"]) == ("2024-05-13", "2024-08-30")
     assert _by_name(data, "ConvictionFollow(3)")["metrics"] is None  # run 없음
 
 

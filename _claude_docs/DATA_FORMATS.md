@@ -11,17 +11,19 @@
 | `holdings` | `(accession_no, cusip, title_of_class, put_call)` | `value_usd`는 달러 단위. `put_call = ''`이면 옵션이 아닌 보유 |
 | `cusip_ticker_map` | `cusip` | `ticker IS NULL` = OpenFIGI 매핑 실패. `sector`/`industry`는 `scripts/supplement_sector.py` 실행 전엔 `''` |
 | `prices` | `(ticker, date)` | 엔진은 `adj_close`, `export_stocks`는 분기말 `close`를 쓴다 |
-| `signals_quarterly` | `(cik, cusip, period_of_report)` | `change_type`, `weight_pct`, conviction/continuity 점수. `exit` 행은 청산한 분기에만 있고 `shares_change` = −직전 주식 수, `value_change_usd` = −직전 가치, `weight_pct` = 0 |
+| `signals_quarterly` | `(cik, cusip, period_of_report)` | `change_type`, `weight_pct`, conviction/continuity 점수. `exit` 행은 청산한 분기에만 있고 `shares_change` = −직전 주식 수, `value_change_usd` = −직전 가치, `weight_pct` = 0. 풋옵션과 `scoring.toml [affiliated_holdings]`의 보유는 행이 없고, `weight_pct`는 그것들을 뺀 합계 대비 비중이다 |
 | `consensus_quarterly` | `(period_of_report, cusip)` | `holder_count`, `new_buy_count`, `holder_ciks` |
 | `total_scores` | `(period_of_report, cusip)` | 4개 성분 점수 + `total_score` |
 | `backtest_runs` | `run_id` | uuid hex. `strategy_name` = `Strategy.name`, `params_json`, `cost_bps`, `benchmark` |
 | `backtest_curves` | `(run_id, date)` | 일별 `nav`, `benchmark_nav`, `position_count` |
-| `backtest_metrics` | `run_id` | total_return, CAGR, Sharpe, Sortino, MDD, Calmar, 분기 승률, 벤치마크 수익률 |
+| `backtest_metrics` | `run_id` | total_return, CAGR, Sharpe, Sortino, MDD, Calmar, 분기 승률, 같은 구간 벤치마크의 total_return·CAGR·MDD·Sharpe(`bench_*`). `bench_mdd`·`bench_sharpe`는 2026-11-17 전 run에는 NULL |
 | `backtest_holdings` | `(run_id, rebalance_date, ticker)` | 분기 첫 영업일 목표 비중 |
+| `target_log` | `(strategy_name, recorded_at)` | 그때그때 지시한 목표 비중의 기록 (`record-targets`). 한 줄 = 한 전략의 목표 한 벌: `as_of`(계산 기준일), `period_of_report`(그때 매니저 전원의 13F가 공개돼 있던 최신 분기), `targets_json`(`{"<ticker>": 비중}`, 가격이 끊겨 뺀 종목 제외, 현금이면 `{}`), `params_json`(`Strategy.params_json()` — MultiManager의 이름에는 매니저 수만 들어가므로 매니저 명단은 여기서 본다. 2026-11-17 15:13의 첫 기록 8줄만 NULL). 직전 기록과 목표나 파라미터가 달라졌을 때만 줄이 생긴다. **쌓기만 한다 — UPDATE·DELETE 하지 않는다.** 다른 테이블과 달리 재수집·재계산으로 되살릴 수 없다 |
 
 - `SCHEMA_SQL`의 `CREATE TABLE IF NOT EXISTS`는 이미 있는 테이블에 컬럼을 더하지 않는다. 기존 DB에 컬럼을 추가할 때는 `MIGRATIONS`에 `ALTER TABLE … ADD COLUMN IF NOT EXISTS`를 넣는다.
 - `tests/unit/test_init_db.py`가 생성된 테이블 집합을 `EXPECTED_TABLES`와 대조한다.
 - `backtest_curves`, `backtest_metrics`, `backtest_holdings`는 `backtest_runs(run_id)`를 외래키로 참조한다 — run을 지울 때는 이 세 테이블부터 지운다.
+- `target_log` 조회 예 — 전략 하나의 기록을 시간순으로: `SELECT recorded_at, as_of, period_of_report, targets_json FROM target_log WHERE strategy_name = 'ConsensusTopK(3,10)' ORDER BY recorded_at`. 종목별로 펼치려면 `json_keys(targets_json)`을 `UNNEST`한다. 기본값을 바꾸면 전략 이름이 달라져 기록이 새 이름으로 쌓이고, 스위트에서 빠진 이름에는 끝 표시가 남지 않는다 — `ConsensusTopK(3,15)` 한 줄(2026-11-17 17:23)은 그날 19:32까지만 기본값이었던 설정의 기록이다. 성과를 계산할 때는 그 시점에 스위트에 있던 이름인지 따로 확인한다.
 
 ## JSON export (`src/thirteen_f/web/data/`)
 
@@ -36,9 +38,9 @@ gitignore 대상이며 `uv run thirteen-f export`로 다시 만든다. SPA는 `/
 | `stocks.json` | `export_stocks` | `[{t: ticker, n: 이름, s: sector, i: industry, px: [분기별 close 또는 null], pxw: [시장 마지막 날로 끝나는 최근 12개 ISO 주의 주별 마지막 close, 가격이 없으면 []]}]` | `STOCKS`, `STOCK_MAP` |
 | `holdings.json` | `export_holdings` | `{<manager id>: {<ticker>: [분기별 보유 주식 수(백만 주)]}}` | `HOLDINGS` |
 | `holdings_unmapped.json` | `export_holdings` | `{<manager id>: {<cusip>: {name_of_issuer, shares: [...]}}}` | `HOLDINGS_UNMAPPED` (없으면 `{}`) |
-| `backtest.json` | `export_backtest` | `[{run_id, name, params, costBps, inSuite, equity, dd, qrets, benchEquity, holdingsLog, metrics}]` — DB의 모든 run. `inSuite`는 기본 suite(`backtest --all`) 전략 이름이면 true — Backtest 화면은 이 run만 칩으로 쓴다 | `BACKTESTS` (없으면 `[]`) |
+| `backtest.json` | `export_backtest` | `[{run_id, name, params, costBps, inSuite, start, end, baseQuarter, equity, dd, qrets, benchEquity, holdingsLog, metrics}]` — DB의 모든 run. `inSuite`는 기본 suite(`backtest --all`) 전략 이름이면 true — Backtest 화면은 이 run만 칩으로 쓴다. `start`·`end`는 곡선의 첫날·마지막 날(지표가 계산된 구간)이다. `equity`·`benchEquity`·`dd`·`qrets`의 첫 점은 시작일이고 그 뒤로 분기말마다 한 점이며, 첫 점은 `baseQuarter`(시작 직전 분기말, 예: 2024-05-13 시작이면 `2024-03-31`) 자리에 놓인다. `metrics`에는 같은 구간 벤치마크의 `benchTotalRet`·`benchCagr`·`benchMaxDD`·`benchSharpe`가 들어간다 (뒤의 둘은 2026-11-17 전 run이면 null). 곡선이 없는 run은 배열이 비고 `start`·`end`·`baseQuarter`가 null | `BACKTESTS` (없으면 `[]`) |
 | `prices/<TICKER>.json` | `export_prices_split` | `{date: [...], close: [...]}` 일봉 | `fetchDailyPx(ticker)` |
-| `targets.json` | `export_targets` | `{as_of, rule, recommended, staleDays, strategies: [{name, type, period, public_since, next_rebalance, metrics, positions: [{ticker, weight, prevWeight, action: "buy"\|"keep", holders, holderIds, name, sector, isEtf, lastClose, lastCloseDate, priceStale}], sells: [...], dropped: [ticker]}]}` — 기본 suite 8전략의 **현재** 목표 비중(백테스트와 같은 `get_target_positions`)과 직전 목록(그 분기 공개 전날 기준) 대비 diff. `next_rebalance`는 다음 분기 13F 기한(분기말 + 45일, 토·일·미국 연방 공휴일이면 다음 영업일 — `core/dates.py:sec_13f_deadline`). `recommended`는 최신 run 중 Calmar 1위(평균 보유 8종목 이상). `priceStale`은 마지막 가격이 `prices` 전체의 마지막 날보다 `staleDays`(10)일 넘게 이르거나 가격이 없는 종목이다 — 현재 목록(positions)은 엔진과 같은 규칙(`engine.tradeable_at`)으로 그런 종목을 빼고 남은 종목에 비중을 다시 나누며, 뺀 종목은 `dropped`에 적는다. 직전 목록에서는 빼지 않아 SELL에 STALE로 남는다 | `TARGETS` (없으면 `null`, Plan 탭이 안내 표시) |
+| `targets.json` | `export_targets` | `{as_of, rule, recommended, staleDays, strategies: [{name, type, period, public_since, next_rebalance, metrics, positions: [{ticker, weight, prevWeight, action: "buy"\|"keep", holders, holderIds, name, sector, isEtf, lastClose, lastCloseDate, priceStale}], sells: [...], dropped: [ticker]}]}` — 기본 suite 8전략의 **현재** 목표 비중(백테스트와 같은 `get_target_positions`)과 직전 목록(그 분기 공개 전날 기준) 대비 diff. `next_rebalance`는 다음 분기 13F 기한(분기말 + 45일, 토·일·미국 연방 공휴일이면 다음 영업일 — `core/dates.py:sec_13f_deadline`). `recommended`는 최신 run 중 Calmar 1위(평균 보유 8종목 이상). `metrics`는 `{cagr, maxDD, sharpe, calmar, totalRet, avgPositions, benchCagr, benchMaxDD, benchSharpe, start, end}` — 그 전략 최신 run의 값과 같은 구간 SPY의 값, 그리고 그 구간(곡선의 첫날·마지막 날)이다. `priceStale`은 마지막 가격이 `prices` 전체의 마지막 날보다 `staleDays`(10)일 넘게 이르거나 가격이 없는 종목이다 — 현재 목록(positions)은 엔진과 같은 규칙(`engine.tradeable_at`)으로 그런 종목을 빼고 남은 종목에 비중을 다시 나누며, 뺀 종목은 `dropped`에 적는다. 직전 목록에서는 빼지 않아 SELL에 STALE로 남는다 | `TARGETS` (없으면 `null`, Plan 탭이 안내 표시) |
 | `llm_summary.json` | 없음 — 만드는 코드가 아직 없다 | — | `LLM_SUMMARY` (`{}`로 대체) |
 
 분기 배열(`px`, 보유 주식 수)의 인덱스는 `quarters.json` 순서와 같다.
@@ -50,6 +52,7 @@ gitignore 대상이며 `uv run thirteen-f export`로 다시 만든다. SPA는 `/
   - **CIK는 따옴표로 감싼 10자리 문자열로 쓴다.** PyYAML은 `cik: 0001061165`처럼 따옴표 없이 0~7 숫자로만 된 값을 8진수 int(287349)로 읽고, collect는 이런 값을 만나면 파일을 다시 쓰기 전에 `ValueError`로 멈춘다. 기존 항목 중 따옴표 없는 CIK는 8·9가 섞여 문자열로 읽히므로 `yaml.safe_dump`가 따옴표를 생략한 것이다.
   - collect는 실행할 때마다 이 파일을 `yaml.safe_dump`로 다시 쓴다 — 주석은 지워지고 키 순서는 유지된다. `cik`를 비워 두면 `company_tickers.json`으로 채우는데, 13F 전용 filer는 여기서 찾지 못하므로 직접 입력한다.
 - **`scoring.toml`** — `[weights]` consensus / conviction / continuity / cloning_quality, 합 1.0(±0.01).
+  - **`[affiliated_holdings]`** (없어도 된다) — `<매니저 label> = ["<CUSIP 9자리>", …]`. 매니저 자신의 회사·관계사 지분이라 종목 선택으로 보지 않는 보유다 (Ackman의 Pershing Square Inc·Pershing Square USA, Icahn의 Icahn Enterprises). analyze가 그 매니저의 시그널과 비중 분모에서 뺀다. `managers`에 없는 label이면 analyze가 `ValueError`로 멈추고 기존 분석 테이블은 그대로 둔다. 고친 뒤에는 `analyze`부터 다시 돌린다.
 
 ## 환경변수
 

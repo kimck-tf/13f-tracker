@@ -35,7 +35,7 @@ cp .env.example .env
 #   GOOGLE_API_KEY="..."                          (선택, LLM 요약/해석 활성화)
 #   GEMINI_THINKING="true"                        (선택, 기본 true)
 
-# 3) DuckDB 12 테이블 초기화 (Phase 5: + backtest_holdings)
+# 3) DuckDB 13 테이블 초기화 (Phase 5: + backtest_holdings, 2026-11: + target_log)
 uv run python scripts/init_db.py
 
 # 4) (선택) Quarto CLI 설치 — 분기 HTML 리포트용
@@ -88,7 +88,7 @@ print(c.execute('''
 
 ## Progress Status
 
-- [x] Phase 0 — 환경 셋업, DuckDB 12 테이블 (Phase 5: +`backtest_holdings`), CLI scaffolding
+- [x] Phase 0 — 환경 셋업, DuckDB 13 테이블 (Phase 5: +`backtest_holdings`, 2026-11: +`target_log`), CLI scaffolding
 - [x] Phase 1 — EDGAR 수집 (15명 / 110 filings / 10,867 holdings / 1,584 price tickers)
 - [x] Phase 2 — 4 시그널 + 종합 점수 (10,759 signals / 8,785 total_scores)
 - [x] Phase 3 — Strategy ABC + 7 전략(MultiManager 추가) + Lookahead-safe + Engine + Runner
@@ -100,47 +100,50 @@ print(c.execute('''
 
 - [x] 백테스트 최적화 (2026-09-20) — 벤치마크 NAV 갱신·집계형 lookahead 규칙·NewBuyOnly `min_positions` 수정 후 79개 설정 탐색(`scripts/sweep_backtests.py`, DB 사본). Calmar 기준 1위 ConsensusTopK(3,10)을 비롯한 계열별 최적값을 기본 스위트에 반영. 보고서 `docs/backtest-optimization-2026-09.md`. `thirteen-f targets` 명령과 SPA **Plan** 탭(비교표 → 권장 전략 → 지금의 목표 비중·매수/매도 목록, `targets.json`) 추가
 
-**unit 273 passed · integration 3 passed + 1 skipped** (2026-10-31) (collect e2e는 로컬 VCR 카세트를 `RECORD_VCR=1`로 녹화해야 실행). (Frontend SPA는 단위 테스트 X — `thirteen-f serve` 후 브라우저 navigate 검증; LLM은 httpx mock + structured JSON schema 검증; Quarto는 사용자 CLI 설치 후 검증)
+- [x] 2026Q3 반영·규칙 보완·재스윕 (2026-11-17) — 13명의 2026Q3 13F 수집 (151 filings / 14,441 holdings / 1,864 price tickers, 가격 2026-11-16까지). 규칙 보완: 매니저 자신의 회사 지분 제외(`config/scoring.toml [affiliated_holdings]`), 2분기 이상 뒤처진 13F 제외, 발행사 대표 클래스 유지, 백테스트 시작일을 첫 13F 공개일로, SPY의 최대 낙폭·Sharpe 저장·표시, 그때그때의 목표를 쌓는 `target_log`(`thirteen-f record-targets`). 79개 설정 재스윕과 판정은 `docs/backtest-resweep-2026-11.md` — ConsensusTopK(3,10)은 Calmar 1위지만 이웃 설정보다 유독 높은 봉우리로 판정했다. 같은 날 기본값을 교체 후보 (3,15)로 바꿨다가, 네 지표가 모두 (3,10)보다 낮아 사용자 결정으로 되돌렸다
+
+**unit 303 passed · integration 3 passed + 1 skipped** (2026-11-17) (collect e2e는 로컬 VCR 카세트를 `RECORD_VCR=1`로 녹화해야 실행). (Frontend SPA는 단위 테스트 X — `thirteen-f serve` 후 브라우저 navigate 검증; LLM은 httpx mock + structured JSON schema 검증; Quarto는 사용자 CLI 설치 후 검증)
 
 **CI**: GitHub Actions — `ruff check src tests scripts` + unit 테스트 (Python 3.12·3.14, `.github/workflows/ci.yml`). integration은 네트워크·VCR 때문에 제외.
 
-## Backtest Snapshot (2024-01-02 ~ 2026-09-14, cost_bps=10, 2026-09-20 실행)
+## Backtest Snapshot (2024-05-13 ~ 2026-11-16, cost_bps=10, 2026-11-17 실행)
 
-기본 8전략의 파라미터는 2026-09 탐색(`docs/backtest-optimization-2026-09.md`, 79개 설정, Calmar 기준)의 계열별 최적값이다. "이전 설정" 열은 탐색 전 파라미터로 2026-09-15에 실행한 값.
+기본 8전략의 최신 run이다. 구간은 첫 13F 공개일(2024-05-13)부터 가격 마지막 날(2026-11-16)까지 631영업일이고, SPY도 같은 구간의 값이다. 파라미터는 2026-09 탐색(`docs/backtest-optimization-2026-09.md`)에서 고른 값 그대로이며 MultiManager만 13F를 그만 낸 Burry를 뺐다.
 
-> 2026-10-31: 엔진이 다시 산 종목에 보유하지 않은 기간의 수익을 붙이던 버그를 고쳤다. 아래 표와 그 탐색은 이 버그가 들어간 엔진의 값이라 높게 나와 있다 — 고친 엔진으로 같은 기간을 다시 돌리면 ConsensusTopK(3,10) CAGR 23.06%·Calmar 1.56, SPY 20.72%다 (분석 테이블은 Phase 1 보정 전 그대로). 2026Q3 반영 때 표와 탐색을 다시 만든다.
+> 2026-09-20 스냅샷(2024-01-02 ~ 2026-09-14, ConsensusTopK(3,10) CAGR 29.93% 등)은 엔진이 다시 산 종목에 보유하지 않은 기간의 수익을 붙이던 버그(2026-10-31 수정)가 들어간 값이라 이 표로 바꿨다. 옛 표는 git 이력에, 그때의 탐색은 `docs/backtest-optimization-2026-09.md`에 남아 있다.
 
-| 전략 | CAGR | MDD | Sharpe | Calmar | 이전 설정 → CAGR |
-|---|--:|--:|--:|--:|---|
-| SingleManagerClone(Buffett) | 16.20% | 20.50% | 1.06 | 0.79 | 같음 → 16.20% |
-| SingleManagerClone(Druckenmiller) | 35.95% | 26.15% | 1.48 | 1.37 | 같음 → 35.95% |
-| **ConsensusTopK(3, 10)** — 탐색 1위 | **29.93%** | **15.93%** | 1.57 | **1.88** | ConsensusTopK(3, 20) → 21.59% |
-| ScoreTopK(40) | 19.67% | 18.85% | 1.24 | 1.04 | ScoreTopK(20) → 16.40% |
-| ConvictionFollow(3) | 21.79% | 18.43% | 1.35 | 1.18 | ConvictionFollow(10) → 15.39% |
-| NewBuyOnly(2, 15) | 39.59% | 31.79% | 1.10 | 1.25 | 같음 → 36.17% (lookahead 규칙 변경으로 달라짐) |
-| Ensemble(ConsensusTopK(3,10) 0.5 / ConsensusTopK(2,15) 0.5) | 28.28% | 15.77% | 1.59 | 1.79 | Ensemble(Buffett 0.4 / ScoreTopK 0.4 / ConsensusTopK 0.2) → 17.32% |
-| MultiManager(Burry·Dalio·Druckenmiller·Tepper, 20) | 33.06% | 23.76% | 1.34 | 1.39 | MultiManager(Buffett·Ackman·Tepper, 15) → 14.41% |
+| 전략 | CAGR | MDD | Sharpe | Calmar | SPY 대비 CAGR |
+|---|--:|--:|--:|--:|--:|
+| SingleManagerClone(Buffett) | 17.08% | 20.50% | 1.06 | 0.83 | +0.69%p |
+| SingleManagerClone(Druckenmiller) | 25.33% | 26.12% | 1.05 | 0.97 | +8.94%p |
+| **ConsensusTopK(3, 10)** — Calmar 1위 | **25.29%** | **14.83%** | 1.38 | **1.71** | +8.90%p |
+| ScoreTopK(40) | 20.76% | 19.02% | 1.22 | 1.09 | +4.36%p |
+| ConvictionFollow(3) | 21.10% | 18.39% | 1.24 | 1.15 | +4.71%p |
+| NewBuyOnly(2, 15) | 3.86% | 31.79% | 0.28 | 0.12 | −12.53%p |
+| Ensemble(ConsensusTopK(3,10) 0.5 / ConsensusTopK(2,15) 0.5) | 21.34% | 14.93% | 1.25 | 1.43 | +4.95%p |
+| MultiManager(Dalio·Druckenmiller·Tepper, 20) | 16.93% | 25.56% | 0.74 | 0.66 | +0.53%p |
+| SPY (벤치마크) | 16.39% | 18.76% | 1.02 | 0.87 | – |
 
-같은 기간 SPY CAGR은 20.72%다 (모든 전략에 같은 값 — 벤치마크 NAV를 첫 매수 전에도 갱신하도록 엔진을 고쳤다). 탐색 보고서는 첫 13F 공개일(2024-05-13)부터 계산해 수치가 이 표보다 높다(예: ConsensusTopK(3,10) CAGR 35.3%).
+2026-11 재스윕(`docs/backtest-resweep-2026-11.md`, 79개 설정)에서 ConsensusTopK(3,10)은 Calmar 1위였지만 이웃 설정(0.96~1.40)보다 유독 높아, 고원이 아니라 봉우리(과적합 신호)로 판정했다. 기본값은 사용자 결정으로 (3,10)을 유지한다 — 같은 계열에서 기준을 통과한 (3,15)는 같은 구간 CAGR 23.31%, MDD 16.60%, Sharpe 1.33, Calmar 1.40으로 네 지표가 모두 낮았고, 두 설정의 차이는 통계적으로 가릴 수 없다. 79개 설정의 중앙값은 CAGR 15.94%로 SPY보다 낮다. 표의 수치를 기대 수익으로 읽지 않는다.
 
 ### ⚠️ 해석 주의사항
 
 1. **이전 스냅샷의 `SingleManagerClone(Buffett)` CAGR 0%는 데이터 한계가 아니라 수집 버그였다**
    Berkshire 제출물의 information table 파일명(`56757.xml` 같은 숫자 이름)을 찾지 못해 보유내역이 전부 빠졌고, 2025Q1은 NEW HOLDINGS 정정(4종목)이 원본(110건)을 가렸다. 2026-09에 수정했다. 같은 때 외국 소재 미국 상장사(Chubb·Accenture·Linde 등 CINS 코드 130종목)가 매핑되지 않던 버그를 고치고 매니저 명단(Klarman·Einhorn·Pabrai CIK, Greenblatt 제외, Ackman 법인 변경)을 바로잡아, 2026-05 스냅샷과 대부분의 전략 수치가 달라졌다.
 
-2. **`NewBuyOnly`는 추천하지 않는다** — 2명 이상 신규매수 후보가 분기당 1~8종목뿐이라 NVDA 100%(2025-07), AER 100%(2026-04) 같은 단일 종목 분기가 있고, CAGR 39.59%·MDD 31.79%는 종목 두세 개의 결과다. 화면 비교용으로만 남겼다. 편도 10bp 거래비용 가정은 어느 전략이든 단순하고 slippage·세금·차입 제한 미반영.
+2. **`NewBuyOnly`는 추천하지 않는다** — 2명 이상 신규매수 후보가 분기당 1~8종목뿐이라 NVDA 100%(2025-07), AER 100%(2026-04) 같은 단일 종목 분기가 있고, 성과가 종목 두세 개에 달려 있다(지금 CAGR 3.86%·MDD 31.79%, 재스윕 12칸의 Calmar가 모두 SPY 아래). 화면 비교용으로만 남겼다. 편도 10bp 거래비용 가정은 어느 전략이든 단순하고 slippage·세금·차입 제한 미반영.
 
-3. **백테스트 가용 시작일은 2024-01-02** (SPY 가격 데이터 시작점)
-   첫 13F(2024Q1)가 2024-05-13에 공개돼 그 전까지는 모든 전략이 현금이고, 그만큼 CAGR이 SPY보다 불리하게 계산된다. 약 32개월 short-cycle 검증이지 long-cycle 검증이 아니다. 파라미터는 이 표본 안에서 고른 값이라 실제 기대 성과는 표보다 낮게 봐야 한다.
+3. **백테스트는 첫 13F 공개일(2024-05-13)부터 계산한다**
+   SPY 가격은 2024-01-02부터 있지만 첫 13F(2024Q1)가 05-13에 공개돼 그 전까지는 모든 전략이 현금이다. 그 구간을 넣으면 전략의 CAGR만 낮아지고 SPY는 그대로라 비교가 어긋나므로(ConsensusTopK(3,10) 21.8% 대 SPY 18.3% ↔ 25.3% 대 16.4%), 2026-11-17부터 `backtest`의 시작일 기본값을 첫 공개일로 두었다 (`--start`로 바꿀 수 있다). 약 2년 반짜리 short-cycle 검증이지 long-cycle 검증이 아니다. 파라미터는 이 표본 안에서 고른 값이라 실제 기대 성과는 표보다 낮게 봐야 한다.
 
-4. **Buffett vs Druckenmiller 복제** — 두 복제 모두 첫 13F가 보이는 2024-05-15부터 투자한다. Druckenmiller 복제(누적 +128%)는 Natera(비중 13~18%)·Insmed·Teva 같은 소수 고확신 종목이 성과를 주도했고, 2025-04 관세 충격 때 하루 −7.7%·+12.9%로 변동도 크다. 복제는 콜옵션을 기초자산 명목금액의 롱 노출로 계산하고(분기별 비중 2.6~16.4%) 풋은 제외하므로, 레버리지·프리미엄이 있는 실제 포지션과 다르다. Duquesne이 금액을 천 달러 단위로 보고한 필링은 collect 단계에서 ×1000 보정된다 (제출물 안의 상대 비중만 쓰는 복제 수익률은 보정 전에도 영향이 없었다).
+4. **Buffett vs Druckenmiller 복제** — 두 복제 모두 첫 13F가 보이는 2024-05-15부터 투자한다. Druckenmiller 복제(2026-11-16까지 누적 +76%)는 Natera(비중 13~18%)·Insmed·Teva 같은 소수 고확신 종목이 성과를 주도했고, 2025-04 관세 충격 때 하루 −7.7%·+12.9%로 변동도 크다. 복제는 콜옵션을 기초자산 명목금액의 롱 노출로 계산하고(분기별 비중 2.6~16.4%) 풋은 제외하므로, 레버리지·프리미엄이 있는 실제 포지션과 다르다. Duquesne이 금액을 천 달러 단위로 보고한 필링은 collect 단계에서 ×1000 보정된다 (제출물 안의 상대 비중만 쓰는 복제 수익률은 보정 전에도 영향이 없었다).
 
-5. **매니저 구성** — Burry(Scion)는 2025Q3 이후 13F가 없어 최근 분기 컨센서스에서 빠진다. Ackman의 2026Q2는 Pershing Square Inc. 통합 보고라 HHH +900만 주, PSUS 신규처럼 법인이 직접 보유하던 지분이 합쳐져 보이는 변화가 섞여 있다(실제 매매 아님).
+5. **매니저 구성** — Burry(Scion)는 2025Q3 이후 13F가 없어 최근 분기 컨센서스에서 빠진다. Ackman의 2026Q2는 Pershing Square Inc. 통합 보고라 HHH +900만 주, PSUS 신규처럼 법인이 직접 보유하던 지분이 합쳐져 보이는 변화가 섞여 있다(실제 매매 아님). 2026-11-17부터 ① 매니저 자신의 회사·관계사 지분(Ackman의 Pershing Square Inc·PSUS, Icahn의 IEP — `config/scoring.toml [affiliated_holdings]`)은 점수 계산에서 빼고, ② 가장 최근 분기보다 2분기 이상 뒤처진 13F는 복제·ConvictionFollow·MultiManager에서 쓰지 않으며(Burry의 2025Q3 포트폴리오가 목표에 남아 있었다), ③ 기본 MultiManager는 Dalio·Druckenmiller·Tepper 3명이다.
 
 6. **Lookahead bias 차단은 검증됨** (Spec §7.4)
    5개 전략 × 미래 filing 노출 6 케이스 단위 테스트로 확인. `filings.filed_at <= as_of_date` 가드는 모든 전략 SQL에 강제됨. 매니저 전원의 집계(총점·컨센서스)를 쓰는 전략은 그 분기 13F가 모두 제출된 뒤에만 그 분기를 쓴다 (2026-09 수정 전에는 첫 제출자 기준이라 최대 11일 앞섰다).
 
-7. **집계 전략의 종목 단위** — 컨센서스 상위 종목에 GOOG·GOOGL이 따로 들어가 Alphabet이 두 자리를 차지하고 SPY 같은 ETF도 종목으로 집계되던 문제를, 2026-10-31에 집계 전략(ConsensusTopK·ScoreTopK·NewBuyOnly·ConvictionFollow·MultiManager)의 ETF 제외·발행사(CUSIP 앞 6자리) 합산으로 고쳤다. 복제 전략은 거장 보유 그대로다. 위 백테스트 수치는 이 변경 전 기준이다 (`docs/backtest-optimization-2026-09.md` §5·§6).
+7. **집계 전략의 종목 단위** — 컨센서스 상위 종목에 GOOG·GOOGL이 따로 들어가 Alphabet이 두 자리를 차지하고 SPY 같은 ETF도 종목으로 집계되던 문제를, 2026-10-31에 집계 전략(ConsensusTopK·ScoreTopK·NewBuyOnly·ConvictionFollow·MultiManager)의 ETF 제외·발행사(CUSIP 앞 6자리) 합산으로 고쳤다. 복제 전략은 거장 보유 그대로다. 2026-09 탐색 보고서(`docs/backtest-optimization-2026-09.md` §5·§6)의 수치는 이 변경 전 기준이다. 2026-11-17부터 ConsensusTopK·ScoreTopK·NewBuyOnly는 발행사의 대표 클래스를 한번 정하면 바꾸지 않는다 — 분기마다 점수가 높은 클래스를 골라 2024Q1~2026Q3에 GOOG↔GOOGL이 5번 바뀌었고, 그때마다 같은 회사를 팔고 다시 샀다.
 
 ## LLM 보조 (선택)
 

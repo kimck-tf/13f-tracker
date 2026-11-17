@@ -143,6 +143,32 @@ def test_conviction_follow_keeps_one_class_per_issuer_across_managers(empty_conn
     assert t["GOOGL"] == pytest.approx((0.9 + 0.8) / (0.9 + 0.8 + 0.7))
 
 
+def test_conviction_follow_drops_a_manager_two_quarters_behind(empty_conn):
+    """c1은 Q1이 마지막 13F다. c2가 한 분기 앞선 동안은 c1의 종목도 쓰고(제출 시차), 두 분기
+    앞서면 c1의 옛 종목은 뺀다 (Burry: 2025Q3 뒤 제출이 없는데 PFE·HAL이 목표에 남아 있었다)."""
+    c = empty_conn
+    c.executemany(
+        "INSERT INTO cusip_ticker_map (cusip, ticker, is_etf) VALUES (?, ?, FALSE)",
+        [("717081103", "PFE"), ("037833100", "AAPL")],
+    )
+    _conviction_db(c, [("c1", "717081103", 0.9), ("c2", "037833100", 0.8)])
+    for period, filed in [("2024-06-30", "2024-08-14"), ("2024-09-30", "2024-11-14")]:
+        c.execute(
+            "INSERT INTO filings VALUES (?, 'c2', '13F-HR', CAST(? AS DATE), CAST(? AS DATE), "
+            "FALSE, NULL)",
+            [f"a-c2-{period}", period, filed],
+        )
+        c.execute(
+            "INSERT INTO signals_quarterly "
+            "(cik, cusip, period_of_report, change_type, weight_pct, conviction_score) "
+            "VALUES ('c2', '037833100', CAST(? AS DATE), 'hold', 0.1, 0.8)",
+            [period],
+        )
+    s = ConvictionFollow(top_k=3)
+    assert set(s.get_target_positions(date(2024, 11, 13), c)) == {"PFE", "AAPL"}
+    assert set(s.get_target_positions(date(2024, 11, 14), c)) == {"AAPL"}
+
+
 def test_conviction_follow_prefers_common_stock_over_warrants(empty_conn):
     """같은 발행사(42806J)의 워런트(13F 표기 '*W EXP …')는 conviction이 높아도 보통주 뒤로."""
     c = empty_conn

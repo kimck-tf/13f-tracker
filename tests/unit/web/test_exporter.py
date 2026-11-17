@@ -260,13 +260,33 @@ def test_resample_quarterly_collapses_to_quarter_end():
         (date(2024, 6, 28), 120.0, 110.0, 0),
     ]
     equity, dd, qrets, bench = _resample_quarterly(curves)
-    assert equity == [110.0, 120.0]
-    assert bench == [105.0, 110.0]
-    # quarterly return: Q1=0(첫분기), Q2≈(120/110-1)
+    # 첫 점은 시작일의 NAV, 그 뒤는 분기말마다 한 점
+    assert equity == [100.0, 110.0, 120.0]
+    assert bench == [100.0, 105.0, 110.0]
+    # quarterly return: 첫 점은 자리만 채운 0, Q1 = 110/100-1, Q2 = 120/110-1
     assert qrets[0] == 0.0
-    assert qrets[1] == pytest.approx(120.0 / 110.0 - 1.0)
+    assert qrets[1] == pytest.approx(0.10)
+    assert qrets[2] == pytest.approx(120.0 / 110.0 - 1.0)
     # drawdown: 누적 최고 대비 (peaks가 단조증가라 모두 0)
     assert all(v <= 0 for v in dd)
+
+
+def test_resample_quarterly_keeps_the_return_of_a_partial_first_quarter():
+    """백테스트가 분기 중간(첫 13F 공개일 05-13)에 시작하면 시작일의 NAV가 첫 점이다 — 첫 분기말을
+    첫 점으로 삼으면 05-13~06-28의 +8%가 곡선과 분기 수익률에서 사라진다."""
+    curves = [
+        (date(2024, 5, 13), 100.0, 100.0, 0),
+        (date(2024, 6, 28), 108.0, 103.0, 10),
+        (date(2024, 9, 30), 110.0, 104.0, 10),
+    ]
+    equity, _dd, qrets, bench = _resample_quarterly(curves)
+    assert equity == [100.0, 108.0, 110.0]
+    assert bench == [100.0, 103.0, 104.0]
+    assert qrets[1] == pytest.approx(0.08)
+
+
+def test_resample_quarterly_of_a_run_without_curves_is_empty():
+    assert _resample_quarterly([]) == ([], [], [], [])
 
 
 def test_group_holdings_by_date_orders_and_serializes():
@@ -300,7 +320,7 @@ def test_export_backtest_writes_runs_with_holdings_and_metrics(conn, tmp_path: P
         )
     conn.execute(
         "INSERT INTO backtest_metrics VALUES "
-        "('r1', 0.10, 0.12, 1.5, 1.8, -0.05, 2.4, 0.66, 0.03, 0.04)"
+        "('r1', 0.10, 0.12, 1.5, 1.8, -0.05, 2.4, 0.66, 0.03, 0.04, 0.07, 0.9)"
     )
     conn.execute(
         "INSERT INTO backtest_holdings VALUES ('r1', DATE '2024-01-02','AAPL',0.5)"
@@ -317,10 +337,16 @@ def test_export_backtest_writes_runs_with_holdings_and_metrics(conn, tmp_path: P
     assert run["name"] == "TestStrat"
     assert run["params"] == {"k": 1}
     assert run["costBps"] == 10.0
-    assert len(run["equity"]) == 2  # 2 quarters
+    assert run["equity"] == [1_000_000.0, 1_050_000.0, 1_100_000.0]  # 시작일 + 분기말 2개
+    # 수치에는 구간이 따라다닌다: 실제 곡선의 첫날·마지막 날, 첫 점이 놓이는 분기(시작 직전 분기말)
+    assert (run["start"], run["end"], run["baseQuarter"]) == (
+        "2024-01-02", "2024-06-28", "2023-12-31",
+    )
     assert run["metrics"]["cagr"] == pytest.approx(0.12)
     assert run["metrics"]["hitRate"] == pytest.approx(0.66)
     assert run["metrics"]["benchTotalRet"] == pytest.approx(0.03)
+    assert run["metrics"]["benchMaxDD"] == pytest.approx(0.07)
+    assert run["metrics"]["benchSharpe"] == pytest.approx(0.9)
     # holdings log
     assert len(run["holdingsLog"]) == 1
     assert run["holdingsLog"][0]["date"] == "2024-01-02"
@@ -362,3 +388,5 @@ def test_export_backtest_marks_runs_of_the_default_suite(conn, tmp_path: Path):
         "ConsensusTopK(3,10)": True,
         "SingleManagerClone(Ackman)": False,
     }
+    # 곡선이 없는 run은 구간도 없다
+    assert {(r["start"], r["end"], r["baseQuarter"]) for r in data} == {(None, None, None)}

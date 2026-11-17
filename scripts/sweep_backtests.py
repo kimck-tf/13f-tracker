@@ -7,7 +7,7 @@ uv run python scripts/sweep_backtests.py --start 2024-05-13 --end 2026-09-14 --s
 
 본 DB(data/13f.duckdb)와 SPA용 JSON은 건드리지 않는다. run은 사본(data/sweep/13f.sweep.duckdb)에
 persist하므로 곡선·보유 내역은 그 DB에서 다시 볼 수 있다. 전·후반 지표는 같은 일별 NAV를
---split 기준으로 잘라 계산한다(재실행 없음). 설정당 약 9초.
+--split 기준으로 잘라 계산한다(재실행 없음). 설정당 평균 13초(2026-11, 79개에 17.6분).
 """
 from __future__ import annotations
 
