@@ -23,7 +23,7 @@
 - `SCHEMA_SQL`의 `CREATE TABLE IF NOT EXISTS`는 이미 있는 테이블에 컬럼을 더하지 않는다. 기존 DB에 컬럼을 추가할 때는 `MIGRATIONS`에 `ALTER TABLE … ADD COLUMN IF NOT EXISTS`를 넣는다.
 - `tests/unit/test_init_db.py`가 생성된 테이블 집합을 `EXPECTED_TABLES`와 대조한다.
 - `backtest_curves`, `backtest_metrics`, `backtest_holdings`는 `backtest_runs(run_id)`를 외래키로 참조한다 — run을 지울 때는 이 세 테이블부터 지운다.
-- `target_log` 조회 예 — 전략 하나의 기록을 시간순으로: `SELECT recorded_at, as_of, period_of_report, targets_json FROM target_log WHERE strategy_name = 'ConsensusTopK(3,10)' ORDER BY recorded_at`. 종목별로 펼치려면 `json_keys(targets_json)`을 `UNNEST`한다.
+- `target_log` 조회 예 — 전략 하나의 기록을 시간순으로: `SELECT recorded_at, as_of, period_of_report, targets_json FROM target_log WHERE strategy_name = 'ConsensusTopK(3,10)' ORDER BY recorded_at`. 종목별로 펼치려면 `json_keys(targets_json)`을 `UNNEST`한다. 기본값을 바꾸면 전략 이름이 달라져 기록이 새 이름으로 쌓이고, 스위트에서 빠진 이름에는 끝 표시가 남지 않는다 — `ConsensusTopK(3,15)` 한 줄(2026-11-17 17:23)은 그날 19:32까지만 기본값이었던 설정의 기록이다. 성과를 계산할 때는 그 시점에 스위트에 있던 이름인지 따로 확인한다.
 
 ## JSON export (`src/thirteen_f/web/data/`)
 

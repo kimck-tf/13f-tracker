@@ -100,7 +100,7 @@ print(c.execute('''
 
 - [x] 백테스트 최적화 (2026-09-20) — 벤치마크 NAV 갱신·집계형 lookahead 규칙·NewBuyOnly `min_positions` 수정 후 79개 설정 탐색(`scripts/sweep_backtests.py`, DB 사본). Calmar 기준 1위 ConsensusTopK(3,10)을 비롯한 계열별 최적값을 기본 스위트에 반영. 보고서 `docs/backtest-optimization-2026-09.md`. `thirteen-f targets` 명령과 SPA **Plan** 탭(비교표 → 권장 전략 → 지금의 목표 비중·매수/매도 목록, `targets.json`) 추가
 
-- [x] 2026Q3 반영·규칙 보완·재스윕 (2026-11-17) — 13명의 2026Q3 13F 수집 (151 filings / 14,441 holdings / 1,864 price tickers, 가격 2026-11-16까지). 규칙 보완: 매니저 자신의 회사 지분 제외(`config/scoring.toml [affiliated_holdings]`), 2분기 이상 뒤처진 13F 제외, 발행사 대표 클래스 유지, 백테스트 시작일을 첫 13F 공개일로, SPY의 최대 낙폭·Sharpe 저장·표시, 그때그때의 목표를 쌓는 `target_log`(`thirteen-f record-targets`). 79개 설정 재스윕과 판정은 `docs/backtest-resweep-2026-11.md` — ConsensusTopK(3,10)은 Calmar 1위지만 이웃 설정보다 유독 높은 봉우리로 판정했고, 기본 스위트를 바꿀지는 아직 정하지 않았다
+- [x] 2026Q3 반영·규칙 보완·재스윕 (2026-11-17) — 13명의 2026Q3 13F 수집 (151 filings / 14,441 holdings / 1,864 price tickers, 가격 2026-11-16까지). 규칙 보완: 매니저 자신의 회사 지분 제외(`config/scoring.toml [affiliated_holdings]`), 2분기 이상 뒤처진 13F 제외, 발행사 대표 클래스 유지, 백테스트 시작일을 첫 13F 공개일로, SPY의 최대 낙폭·Sharpe 저장·표시, 그때그때의 목표를 쌓는 `target_log`(`thirteen-f record-targets`). 79개 설정 재스윕과 판정은 `docs/backtest-resweep-2026-11.md` — ConsensusTopK(3,10)은 Calmar 1위지만 이웃 설정보다 유독 높은 봉우리로 판정했다. 같은 날 기본값을 교체 후보 (3,15)로 바꿨다가, 네 지표가 모두 (3,10)보다 낮아 사용자 결정으로 되돌렸다
 
 **unit 303 passed · integration 3 passed + 1 skipped** (2026-11-17) (collect e2e는 로컬 VCR 카세트를 `RECORD_VCR=1`로 녹화해야 실행). (Frontend SPA는 단위 테스트 X — `thirteen-f serve` 후 브라우저 navigate 검증; LLM은 httpx mock + structured JSON schema 검증; Quarto는 사용자 CLI 설치 후 검증)
 
@@ -124,7 +124,7 @@ print(c.execute('''
 | MultiManager(Dalio·Druckenmiller·Tepper, 20) | 16.93% | 25.56% | 0.74 | 0.66 | +0.53%p |
 | SPY (벤치마크) | 16.39% | 18.76% | 1.02 | 0.87 | – |
 
-2026-11 재스윕(`docs/backtest-resweep-2026-11.md`, 79개 설정)에서 ConsensusTopK(3,10)은 Calmar 1위였지만 이웃 설정(0.96~1.40)보다 유독 높아, 고원이 아니라 봉우리(과적합 신호)로 판정했다. 79개 설정의 중앙값은 CAGR 15.94%로 SPY보다 낮다. 표의 수치를 기대 수익으로 읽지 않는다.
+2026-11 재스윕(`docs/backtest-resweep-2026-11.md`, 79개 설정)에서 ConsensusTopK(3,10)은 Calmar 1위였지만 이웃 설정(0.96~1.40)보다 유독 높아, 고원이 아니라 봉우리(과적합 신호)로 판정했다. 기본값은 사용자 결정으로 (3,10)을 유지한다 — 같은 계열에서 기준을 통과한 (3,15)는 같은 구간 CAGR 23.31%, MDD 16.60%, Sharpe 1.33, Calmar 1.40으로 네 지표가 모두 낮았고, 두 설정의 차이는 통계적으로 가릴 수 없다. 79개 설정의 중앙값은 CAGR 15.94%로 SPY보다 낮다. 표의 수치를 기대 수익으로 읽지 않는다.
 
 ### ⚠️ 해석 주의사항
 
