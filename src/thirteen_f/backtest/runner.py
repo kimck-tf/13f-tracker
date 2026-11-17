@@ -98,7 +98,12 @@ def run_suite(
                 strategy.name, res.metrics["cagr"] * 100,
                 res.metrics["mdd"] * 100, res.metrics["sharpe"],
             )
-            results.append({"name": strategy.name, "run_id": res.run_id, **res.metrics})
+            results.append({
+                "name": strategy.name, "run_id": res.run_id,
+                # 실제로 계산한 구간 (요청한 start·end는 벤치마크 가격이 있는 날로 잘린다)
+                "start": res.nav_series[0][0], "end": res.nav_series[-1][0],
+                **res.metrics,
+            })
         return results
     finally:
         conn.close()

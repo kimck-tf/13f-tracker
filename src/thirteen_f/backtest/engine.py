@@ -187,6 +187,10 @@ def run_backtest(
         navs[i] / navs[i - 1] - 1 if navs[i - 1] > 0 else 0
         for i in range(1, len(navs))
     ]
+    bench_rets = [
+        bench_navs[i] / bench_navs[i - 1] - 1 if bench_navs[i - 1] > 0 else 0
+        for i in range(1, len(bench_navs))
+    ]
     quarter_pnls: list[float] = []
     sorted_qs = sorted(quarter_navs.keys())
     for j in range(1, len(sorted_qs)):
@@ -206,6 +210,9 @@ def run_backtest(
         "win_rate_quarterly": win_rate_quarterly(quarter_pnls),
         "bench_total_return": total_return(bench_navs),
         "bench_cagr": cagr(bench_navs, num_days=len(bench_navs)),
+        # 전략의 MDD·Sharpe·Calmar를 견줄 기준 — 연수익률만으로는 위험 조정 비교를 못 한다
+        "bench_mdd": max_drawdown(bench_navs),
+        "bench_sharpe": sharpe(bench_rets),
     }
 
     # I8: deep copy로 caller mutation이 engine internal state에 영향 없도록 격리
@@ -243,10 +250,10 @@ def _persist_result(conn: duckdb.DuckDBPyConnection, r: BacktestResult) -> None:
     )
     m = r.metrics
     conn.execute(
-        "INSERT INTO backtest_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO backtest_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (r.run_id, m["total_return"], m["cagr"], m["sharpe"], m["sortino"],
          m["mdd"], m["calmar"], m["win_rate_quarterly"],
-         m["bench_total_return"], m["bench_cagr"]),
+         m["bench_total_return"], m["bench_cagr"], m["bench_mdd"], m["bench_sharpe"]),
     )
     # Phase 5 A4: backtest_holdings — 분기 첫 영업일의 target snapshot
     # I5: run_id가 매번 uuid.uuid4().hex로 새 값이라 (run_id, rdate, ticker) PK 충돌 불가 →

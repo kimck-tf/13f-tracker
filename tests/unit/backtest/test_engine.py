@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 import duckdb
+import numpy as np
 import pytest
 
 from scripts.init_db import init_db
@@ -159,6 +160,36 @@ def test_benchmark_nav_tracks_spy_before_first_position(conn):
     )
     # SPY +0.05%/day, 252일 → 251번 상승
     assert result.metrics["bench_total_return"] == pytest.approx(1.0005 ** 251 - 1, rel=1e-6)
+
+
+def test_engine_reports_and_stores_benchmark_drawdown_and_sharpe(conn):
+    """벤치마크의 최대 낙폭·Sharpe도 같은 run에 남긴다 — 연수익률만 있으면 전략의 MDD·Sharpe·
+    Calmar를 SPY와 견줄 수 없다. SPY가 06-03 하루에 −10% 빠진 뒤 다시 하루 +0.05%씩 오른다."""
+    conn.execute(
+        "UPDATE prices SET adj_close = adj_close * 0.9 "
+        "WHERE ticker = 'SPY' AND date >= DATE '2024-06-03'"
+    )
+    result = run_backtest(
+        strategy=FixedTwoTickerStrategy(),
+        start=date(2024, 1, 2),
+        end=date(2024, 12, 31),
+        conn=conn,
+        cost_bps=0,
+        persist=True,
+    )
+    drop = 0.9 * 1.0005 - 1  # 06-03 하루 수익률. 그 전 153일은 고점 갱신, 뒤 98일은 회복 못 함
+    returns = np.array([0.0005] * 152 + [drop] + [0.0005] * 98)
+    assert result.metrics["bench_mdd"] == pytest.approx(-drop)
+    assert result.metrics["bench_sharpe"] == pytest.approx(
+        returns.mean() / returns.std() * np.sqrt(252)
+    )
+    stored = conn.execute(
+        "SELECT bench_mdd, bench_sharpe FROM backtest_metrics WHERE run_id = ?", (result.run_id,)
+    ).fetchone()
+    assert stored == (
+        pytest.approx(result.metrics["bench_mdd"]),
+        pytest.approx(result.metrics["bench_sharpe"]),
+    )
 
 
 def test_engine_drops_tickers_whose_prices_stopped(conn):

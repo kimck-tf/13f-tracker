@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import shutil
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import duckdb
@@ -26,6 +26,23 @@ def db_start_quarter(db_path: Path) -> str | None:
     if row is None or row[0] is None:
         return None
     return quarter_label(row[0])
+
+
+def first_public_date(db_path: Path) -> date | None:
+    """DB에 든 13F-HR 가운데 가장 이른 제출일 — 그 전에는 어느 전략도 쓸 신호가 없다.
+
+    파일이 없거나 13F-HR이 없으면 None. read-only로 연다.
+    """
+    if not db_path.exists():
+        return None
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        row = con.execute(
+            "SELECT MIN(filed_at) FROM filings WHERE form_type LIKE '13F-HR%'"
+        ).fetchone()
+    finally:
+        con.close()
+    return row[0] if row else None
 
 
 def backup_db(db_path: Path, keep: int = 3) -> Path | None:

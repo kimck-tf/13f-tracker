@@ -132,7 +132,8 @@ CREATE TABLE IF NOT EXISTS backtest_metrics (
     sharpe DOUBLE, sortino DOUBLE,
     mdd DOUBLE, calmar DOUBLE,
     win_rate_quarterly DOUBLE,
-    bench_total_return DOUBLE, bench_cagr DOUBLE
+    bench_total_return DOUBLE, bench_cagr DOUBLE,
+    bench_mdd DOUBLE, bench_sharpe DOUBLE
 );
 
 CREATE TABLE IF NOT EXISTS backtest_holdings (
@@ -151,6 +152,9 @@ MIGRATIONS = [
     "ALTER TABLE managers ADD COLUMN IF NOT EXISTS notes VARCHAR DEFAULT ''",
     "ALTER TABLE cusip_ticker_map ADD COLUMN IF NOT EXISTS sector VARCHAR DEFAULT ''",
     "ALTER TABLE cusip_ticker_map ADD COLUMN IF NOT EXISTS industry VARCHAR DEFAULT ''",
+    # 2026-11: 벤치마크의 최대 낙폭·Sharpe (그 전 run은 NULL)
+    "ALTER TABLE backtest_metrics ADD COLUMN IF NOT EXISTS bench_mdd DOUBLE",
+    "ALTER TABLE backtest_metrics ADD COLUMN IF NOT EXISTS bench_sharpe DOUBLE",
 ]
 
 

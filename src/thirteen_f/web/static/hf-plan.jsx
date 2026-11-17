@@ -25,6 +25,11 @@ function PlanScreen({ route }) {
   }
 
   const ranked = strategies.slice().sort((a, b) => (b.metrics?.calmar ?? -Infinity) - (a.metrics?.calmar ?? -Infinity));
+  // 표의 수치가 계산된 구간과 같은 구간의 SPY. backtest --all은 모든 전략을 같은 구간으로 돌리므로
+  // 지표가 있는 첫 전략의 값을 쓴다. 2026-11 전에 만든 run에는 SPY의 낙폭·Sharpe가 없다
+  const ref = strategies.find(s => s.metrics && s.metrics.start)?.metrics;
+  const benchNote = !ref ? "" : ` · ${ref.start} ~ ${ref.end} · 같은 구간 SPY: CAGR ${fmtPct(ref.benchCagr, { signed: true })}`
+    + (ref.benchMaxDD ? ` · MDD ${fmtPct(ref.benchMaxDD)} · Calmar ${(ref.benchCagr / ref.benchMaxDD).toFixed(2)} · Sharpe ${ref.benchSharpe.toFixed(2)}` : "");
   const buys = selected.positions.filter(p => p.action === "buy");
   const periodLabel = (() => {
     const i = Q_DATES.indexOf(selected.period);
@@ -53,7 +58,7 @@ function PlanScreen({ route }) {
         {/* 1. 알고리즘 선정 */}
         <Section
           title="알고리즘 선정"
-          sub={`기본 전략 ${strategies.length}개의 최신 백테스트 · 권장 기준: ${data.rule}`}
+          sub={`기본 전략 ${strategies.length}개의 최신 백테스트${benchNote} · 권장 기준: ${data.rule}`}
           right={<button className="hf-link mono" onClick={() => navigate("/backtest")}>수익 곡선 보기 →</button>}
         >
           <Table

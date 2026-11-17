@@ -290,17 +290,21 @@ def export_holdings(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
 def _resample_quarterly(
     curves: list[tuple[date, float, float, int]],
 ) -> tuple[list[float], list[float], list[float], list[float]]:
-    """daily curves [(date, nav, bench_nav, pos_cnt)] → 분기말 equity/drawdown/qrets/bench.
+    """daily curves [(date, nav, bench_nav, pos_cnt)] → 시작일 + 분기말 equity/drawdown/qrets/bench.
 
-    Quarter-end은 같은 분기 라벨의 마지막 영업일 (덮어쓰기로 보존).
+    첫 점은 시작일(첫 행)의 NAV이고, 그 뒤로 분기마다 마지막 영업일의 NAV가 한 점씩 온다
+    (같은 분기 라벨을 덮어써 마지막 날을 남긴다). 시작일을 첫 점으로 두므로 분기 중간에 시작한
+    run도 첫 분기의 수익이 곡선과 qrets에 남는다. 화면은 첫 점을 시작 직전 분기말 자리
+    (``baseQuarter``)에 놓는다. 곡선이 없으면 모두 빈 리스트.
     """
-    by_q: dict[str, tuple[date, float, float]] = {}
-    for d, nav, bench, _ in curves:
-        q_lab = quarter_label(d)
-        by_q[q_lab] = (d, float(nav), float(bench))
+    if not curves:
+        return [], [], [], []
+    by_q: dict[str, tuple[float, float]] = {}
+    for d, nav, bench_nav, _ in curves:
+        by_q[quarter_label(d)] = (float(nav), float(bench_nav))
     sorted_q = sorted(by_q.keys())
-    equity = [by_q[q][1] for q in sorted_q]
-    bench = [by_q[q][2] for q in sorted_q]
+    equity = [float(curves[0][1])] + [by_q[q][0] for q in sorted_q]
+    bench = [float(curves[0][2])] + [by_q[q][1] for q in sorted_q]
     # drawdown: 누적 최고 대비 하락률
     peak = 0.0
     dd: list[float] = []
@@ -323,13 +327,25 @@ def _group_holdings_by_date(rows: list[tuple[date, str, float]]) -> list[dict]:
     return [{"date": k, "holdings": v} for k, v in sorted(grouped.items())]
 
 
+def _previous_quarter_end(d: date) -> date:
+    """d가 속한 분기의 직전 분기말."""
+    year, q = parse_quarter(quarter_label(d))
+    year, q = (year - 1, 4) if q == 1 else (year, q - 1)
+    return quarter_end(f"{year}Q{q}")
+
+
 def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
-    """Export ``backtest.json`` — list of run records with equity/dd/qrets/holdingsLog/metrics."""
+    """Export ``backtest.json`` — list of run records with equity/dd/qrets/holdingsLog/metrics.
+
+    ``start``·``end``는 요청한 기간(``backtest_runs.start_date``)이 아니라 곡선의 첫날·마지막 날이다
+    — 지표가 실제로 계산된 구간이고, 수치를 볼 때 함께 봐야 한다.
+    """
     runs = conn.execute(
         """
         SELECT r.run_id, r.strategy_name, r.params_json, r.start_date, r.end_date, r.cost_bps,
                m.total_return, m.cagr, m.sharpe, m.sortino, m.mdd, m.calmar,
-               m.win_rate_quarterly, m.bench_total_return, m.bench_cagr
+               m.win_rate_quarterly, m.bench_total_return, m.bench_cagr,
+               m.bench_mdd, m.bench_sharpe
         FROM backtest_runs r
         LEFT JOIN backtest_metrics m ON m.run_id = r.run_id
         ORDER BY r.created_at DESC
@@ -341,7 +357,7 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
     for (
         run_id, name, params_json, _sd, _ed, cost_bps,
         total_ret, m_cagr, m_sharpe, m_sortino, m_mdd, m_calmar,
-        m_winq, m_bench_total, m_bench_cagr,
+        m_winq, m_bench_total, m_bench_cagr, m_bench_mdd, m_bench_sharpe,
     ) in runs:
         curves = conn.execute(
             """
@@ -367,6 +383,9 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
             "params": json.loads(params_json) if params_json else {},
             "costBps": cost_bps,
             "inSuite": name in suite_names,
+            "start": curves[0][0].isoformat() if curves else None,
+            "end": curves[-1][0].isoformat() if curves else None,
+            "baseQuarter": _previous_quarter_end(curves[0][0]).isoformat() if curves else None,
             "equity": equity,
             "dd": dd,
             "qrets": qrets,
@@ -382,6 +401,8 @@ def export_backtest(conn: duckdb.DuckDBPyConnection, out_dir: Path) -> None:
                 "hitRate": m_winq,
                 "benchTotalRet": m_bench_total,
                 "benchCagr": m_bench_cagr,
+                "benchMaxDD": m_bench_mdd,  # 2026-11 전 run은 null
+                "benchSharpe": m_bench_sharpe,
             },
         })
     (out_dir / "backtest.json").write_text(
@@ -398,13 +419,17 @@ def _next_rebalance(period: date) -> date:
 
 
 def _latest_run_metrics(conn: duckdb.DuckDBPyConnection) -> dict[str, dict]:
-    """strategy_name → 최신 run의 지표 (+ 리밸런스당 평균 보유 종목 수)."""
+    """strategy_name → 최신 run의 지표 (+ 리밸런스당 평균 보유 종목 수, 같은 구간의 벤치마크
+    지표, 지표가 계산된 구간 = 곡선의 첫날·마지막 날)."""
     rows = conn.execute(
         """
         SELECT r.strategy_name, m.cagr, m.mdd, m.sharpe, m.calmar, m.bench_cagr, m.total_return,
                (SELECT AVG(n) FROM (
                    SELECT COUNT(*) AS n FROM backtest_holdings h
-                   WHERE h.run_id = r.run_id GROUP BY h.rebalance_date)) AS avg_positions
+                   WHERE h.run_id = r.run_id GROUP BY h.rebalance_date)) AS avg_positions,
+               m.bench_mdd, m.bench_sharpe,
+               (SELECT MIN(c.date) FROM backtest_curves c WHERE c.run_id = r.run_id) AS first_day,
+               (SELECT MAX(c.date) FROM backtest_curves c WHERE c.run_id = r.run_id) AS last_day
         FROM backtest_runs r JOIN backtest_metrics m USING (run_id)
         QUALIFY ROW_NUMBER() OVER (PARTITION BY r.strategy_name ORDER BY r.created_at DESC) = 1
         """
@@ -412,10 +437,14 @@ def _latest_run_metrics(conn: duckdb.DuckDBPyConnection) -> dict[str, dict]:
     return {
         name: {
             "cagr": cagr, "maxDD": mdd, "sharpe": sharpe, "calmar": calmar,
-            "benchCagr": bench, "totalRet": total,
+            "benchCagr": bench, "benchMaxDD": bench_mdd, "benchSharpe": bench_sharpe,
+            "totalRet": total,
             "avgPositions": float(avg) if avg is not None else 0.0,
+            "start": first_day.isoformat() if first_day else None,
+            "end": last_day.isoformat() if last_day else None,
         }
-        for name, cagr, mdd, sharpe, calmar, bench, total, avg in rows
+        for name, cagr, mdd, sharpe, calmar, bench, total, avg, bench_mdd, bench_sharpe,
+            first_day, last_day in rows
     }
 
 

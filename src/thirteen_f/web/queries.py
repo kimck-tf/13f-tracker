@@ -72,7 +72,8 @@ def backtest_metrics_df(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
         """
         SELECT r.run_id, r.strategy_name, r.start_date, r.end_date, r.cost_bps,
                m.total_return, m.cagr, m.sharpe, m.sortino, m.mdd, m.calmar,
-               m.win_rate_quarterly, m.bench_total_return, m.bench_cagr
+               m.win_rate_quarterly, m.bench_total_return, m.bench_cagr,
+               m.bench_mdd, m.bench_sharpe
         FROM backtest_runs r
         JOIN backtest_metrics m ON r.run_id = m.run_id
         ORDER BY r.created_at DESC
