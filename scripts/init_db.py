@@ -18,6 +18,7 @@ EXPECTED_TABLES = {
     "backtest_curves",
     "backtest_metrics",
     "backtest_holdings",
+    "target_log",
 }
 
 SCHEMA_SQL = """
@@ -143,6 +144,18 @@ CREATE TABLE IF NOT EXISTS backtest_holdings (
     weight         DOUBLE  NOT NULL,
     PRIMARY KEY (run_id, rebalance_date, ticker)
 );
+
+-- 그때그때 지시한 목표 비중의 기록. 쌓기만 한다 (UPDATE·DELETE 금지) — analyze는 지난 분기의
+-- 점수까지 다시 계산하므로, 실제로 지시했던 목록은 여기에만 남는다
+CREATE TABLE IF NOT EXISTS target_log (
+    strategy_name    VARCHAR   NOT NULL,
+    recorded_at      TIMESTAMP NOT NULL,
+    as_of            DATE      NOT NULL,
+    period_of_report DATE,
+    targets_json     VARCHAR   NOT NULL,
+    params_json      VARCHAR,
+    PRIMARY KEY (strategy_name, recorded_at)
+);
 """
 
 
@@ -155,6 +168,8 @@ MIGRATIONS = [
     # 2026-11: 벤치마크의 최대 낙폭·Sharpe (그 전 run은 NULL)
     "ALTER TABLE backtest_metrics ADD COLUMN IF NOT EXISTS bench_mdd DOUBLE",
     "ALTER TABLE backtest_metrics ADD COLUMN IF NOT EXISTS bench_sharpe DOUBLE",
+    # 2026-11-17 15:13의 첫 기록 8줄은 이 칸이 생기기 전이라 NULL이다
+    "ALTER TABLE target_log ADD COLUMN IF NOT EXISTS params_json VARCHAR",
 ]
 
 

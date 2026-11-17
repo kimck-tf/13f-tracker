@@ -53,7 +53,7 @@ def test_update_passes_db_start_quarter_to_collect(db, calls):
     _with_filing(db, date(2024, 3, 31))
     r = CliRunner().invoke(app, ["update", "--skip-backtest", "--skip-export", "--skip-report"])
     assert r.exit_code == 0, r.output
-    assert _steps(calls) == [["collect", "--start", "2024Q1"], ["analyze"]]
+    assert _steps(calls) == [["collect", "--start", "2024Q1"], ["analyze"], ["record-targets"]]
 
 
 def test_update_explicit_start_wins(db, calls):
@@ -76,7 +76,15 @@ def test_update_skip_collect_runs_no_collect(db, calls):
         app, ["update", "--skip-collect", "--skip-backtest", "--skip-export", "--skip-report"]
     )
     assert r.exit_code == 0, r.output
-    assert _steps(calls) == [["analyze"]]
+    assert _steps(calls) == [["analyze"], ["record-targets"]]
+
+
+def test_update_records_targets_right_after_analyze(db, calls):
+    """목표 기록은 analyze 바로 뒤, backtest·export를 건너뛰어도 남긴다 — 화면에 내보내기 전에
+    그때의 목록이 먼저 쌓여야 한다."""
+    r = CliRunner().invoke(app, ["update", "--skip-collect", "--skip-report"])
+    assert r.exit_code == 0, r.output
+    assert _steps(calls) == [["analyze"], ["record-targets"], ["backtest", "--all"], ["export"]]
 
 
 def test_update_backs_up_db_before_first_step(db, calls):

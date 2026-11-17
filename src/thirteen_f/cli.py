@@ -238,6 +238,32 @@ def targets(
 
 
 @app.command()
+def record_targets() -> None:
+    """기본 전략의 오늘 목표 비중을 target_log에 쌓는다 (목표가 바뀐 전략만, 기존 줄은 그대로).
+
+    analyze는 지난 분기 점수까지 다시 계산하므로 규칙·데이터가 바뀌면 과거 목표도 바뀐다. 그때
+    실제로 지시한 목록을 남겨 두는 기록이고, ``update``가 analyze 바로 뒤에 부른다.
+    """
+    from datetime import date as _date
+
+    import duckdb
+
+    from thirteen_f.backtest.target_log import record_targets as record
+    from thirteen_f.core.config import load_settings
+
+    settings = load_settings()
+    conn = duckdb.connect(str(settings.duckdb_path))
+    try:
+        recorded = record(conn, _date.today())
+    finally:
+        conn.close()
+    if recorded:
+        typer.echo(f"목표 기록: {len(recorded)}개 전략 — {', '.join(recorded)}")
+    else:
+        typer.echo("목표 기록: 바뀐 전략 없음")
+
+
+@app.command()
 def serve(
     host: str = typer.Option("127.0.0.1", help="Bind host"),
     port: int = typer.Option(8765, help="Bind port"),
@@ -337,7 +363,7 @@ def update(
     skip_export: bool = typer.Option(False, help="export 단계 건너뛰기 (Phase 5)"),
     skip_report: bool = typer.Option(False, help="report 단계 건너뛰기"),
 ) -> None:
-    """collect → analyze → backtest --all → export → report --latest 순차 실행.
+    """collect → analyze → record-targets → backtest --all → export → report --latest 순차 실행.
 
     ⚠️ typer command 함수를 Python에서 직접 호출하면 OptionInfo 기본값이 그대로
     전달되어 타입 에러 발생. 따라서 subprocess로 자기 자신(thirteen-f CLI)을
@@ -377,6 +403,8 @@ def update(
         run_step(collect_args)
     typer.echo("=== Phase 2: analyze ===")
     run_step(["analyze"])
+    # 건너뛰는 옵션을 두지 않는다 — 화면에 내보내기 전에 그때의 목표가 먼저 쌓여야 한다
+    run_step(["record-targets"])
     if not skip_backtest:
         typer.echo("=== Phase 3: backtest --all ===")
         run_step(["backtest", "--all"])
