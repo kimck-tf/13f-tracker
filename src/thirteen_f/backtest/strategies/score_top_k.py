@@ -7,6 +7,8 @@ from datetime import date
 import duckdb
 
 from thirteen_f.backtest.strategy import (
+    ISSUER_CLASS_CANDIDATES_SQL,
+    ISSUER_CLASS_ORDER_SQL,
     NON_COMMON_CUSIPS_SQL,
     Strategy,
     latest_public_period,
@@ -31,31 +33,30 @@ class ScoreTopK(Strategy):
         rows = conn.execute(
             f"""
             WITH cand AS (
-                SELECT t.ticker, t.total_score, SUBSTR(t.cusip, 1, 6) AS issuer,
-                       nc.cusip IS NOT NULL AS non_common
-                FROM total_scores t
-                LEFT JOIN cusip_ticker_map m ON m.cusip = t.cusip
+                SELECT t.ticker, t.total_score, t.held_since, t.score_then,
+                       SUBSTR(t.cusip, 1, 6) AS issuer, nc.cusip IS NOT NULL AS non_common
+                FROM ({ISSUER_CLASS_CANDIDATES_SQL}) t
                 LEFT JOIN ({NON_COMMON_CUSIPS_SQL}) nc ON nc.cusip = t.cusip
-                WHERE t.period_of_report = ?
-                  AND t.ticker IS NOT NULL
-                  AND COALESCE(m.is_etf, FALSE) = FALSE
             ),
             one_per_issuer AS (
-                -- 발행사(CUSIP 앞 6자리)당 한 클래스: 보통주 먼저(워런트·권리는 뒤로),
-                -- 그다음 total_score
-                SELECT ticker, total_score
+                -- 발행사(CUSIP 앞 6자리)당 한 클래스 (ISSUER_CLASS_ORDER_SQL). 순위에 쓰는 점수는
+                -- 대표 클래스와 무관하게 보통주 클래스 중 최고 total_score
+                SELECT ticker,
+                       FIRST_VALUE(total_score) OVER (
+                           PARTITION BY issuer
+                           ORDER BY non_common, total_score DESC NULLS LAST, ticker
+                       ) AS issuer_score
                 FROM cand
                 QUALIFY ROW_NUMBER() OVER (
-                    PARTITION BY issuer
-                    ORDER BY non_common, total_score DESC NULLS LAST, ticker
+                    PARTITION BY issuer ORDER BY {ISSUER_CLASS_ORDER_SQL}
                 ) = 1
             )
             SELECT ticker
             FROM one_per_issuer
-            ORDER BY total_score DESC NULLS LAST
+            ORDER BY issuer_score DESC NULLS LAST
             LIMIT ?
             """,
-            (latest_period, self.top_k),
+            (latest_period, latest_period, self.top_k),
         ).fetchall()
         if not rows:
             return {}

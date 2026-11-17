@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import duckdb
 import pytest
@@ -169,6 +169,86 @@ def test_new_buy_only_merges_classes_and_excludes_etfs(conn):
         "LBRDK" in t and "LBRDA" not in t
     )  # 발행사 신규매수 수 = max(2, 1) = 2 → 대표 클래스는 total_score 높은 LBRDK
     assert set(t) == {"AAPL", "LBRDK"}  # AAPL new_buy 2, MSFT 1은 탈락
+
+
+Q1, Q2, Q3 = date(2024, 3, 31), date(2024, 6, 30), date(2024, 9, 30)
+CUSIP = {"LBRDA": "530307107", "LBRDK": "530307305", "AMZN": "023135106"}
+
+
+def _add_quarter(conn, period, scores):
+    """다음 분기를 더한다: 두 매니저가 분기말 45일 뒤(Q2 08-14, Q3 11-14) 제출하고,
+    scores({ticker: total_score})의 종목만 보유한다 (보유자 2명, 신규매수 1명)."""
+    for cik in ("c1", "c2"):
+        conn.execute(
+            "INSERT INTO filings VALUES (?, ?, '13F-HR', ?, ?, FALSE, NULL)",
+            (f"{cik}-{period}", cik, period, period + timedelta(days=45)),
+        )
+    for ticker, score in scores.items():
+        conn.execute(
+            "INSERT INTO total_scores VALUES (?, ?, ?, 1.0, 1.0, 1.0, 1.0, ?)",
+            (period, CUSIP[ticker], ticker, score),
+        )
+        conn.execute(
+            "INSERT INTO consensus_quarterly VALUES (?, ?, ?, 2, 1, 'c1,c2', 0.5)",
+            (period, CUSIP[ticker], ticker),
+        )
+
+
+def _liberty(targets):
+    return {"LBRDA", "LBRDK"} & set(targets)
+
+
+@pytest.mark.parametrize("strategy", [
+    ConsensusTopK(min_holders=2, top_k=10),
+    ScoreTopK(top_k=10),
+    NewBuyOnly(min_holders=1, top_k=10),
+])
+def test_issuer_keeps_its_share_class_when_the_other_class_scores_higher(conn, strategy):
+    """Q1의 대표 클래스 LBRDK(0.42 > 0.41)를, Q2에 LBRDA 점수가 더 높아져도 바꾸지 않는다
+    (실데이터: 대표가 GOOG↔GOOGL로 10분기에 5번 바뀌어 같은 회사를 팔고 다시 샀다)."""
+    _add_quarter(conn, Q2, {"LBRDA": 0.50, "LBRDK": 0.45})
+    assert _liberty(strategy.get_target_positions(date(2024, 9, 1), conn)) == {"LBRDK"}
+
+
+def test_issuer_switches_class_only_when_the_kept_class_is_gone(conn):
+    """대표 클래스(LBRDK)를 아무도 들지 않게 되면 남은 클래스(LBRDA)로 바꾸고, LBRDK가 다시 나타나
+    점수가 더 높아도 되돌아가지 않는다."""
+    _add_quarter(conn, Q2, {"LBRDA": 0.50})
+    _add_quarter(conn, Q3, {"LBRDA": 0.40, "LBRDK": 0.60})
+    s = ScoreTopK(top_k=10)
+    assert _liberty(s.get_target_positions(date(2024, 9, 1), conn)) == {"LBRDA"}
+    assert _liberty(s.get_target_positions(date(2024, 12, 1), conn)) == {"LBRDA"}
+
+
+def test_issuer_rank_still_uses_its_best_scoring_class(conn):
+    """순위는 발행사의 최고 점수(Q2의 LBRDA 0.50)로 매기고 사는 클래스만 유지한다(LBRDK 0.30).
+    유지한 클래스의 점수로 순위를 매기면 Liberty가 AMZN(0.35)에 밀려 빠진다."""
+    _add_quarter(conn, Q2, {"LBRDA": 0.50, "LBRDK": 0.30, "AMZN": 0.35})
+    targets = ScoreTopK(top_k=1).get_target_positions(date(2024, 9, 1), conn)
+    assert targets == {"LBRDK": pytest.approx(1.0)}
+
+
+def test_common_stock_replaces_a_kept_warrant_once_it_appears(conn):
+    """보통주 우선이 클래스 유지보다 앞선다: Q1에 워런트(HTZWW)만 있던 발행사에 Q2 보통주(HTZ)가
+    생기면, 워런트를 먼저 들었고 점수가 더 높아도 보통주로 바꾼다."""
+    CUSIP.update({"HTZ": "42806J700", "HTZWW": "42806J114"})
+    for ticker, title in (("HTZ", "COM NEW"), ("HTZWW", "*W EXP 06/30/205")):
+        conn.execute(
+            "INSERT INTO cusip_ticker_map (cusip, ticker, is_etf) VALUES (?, ?, FALSE)",
+            (CUSIP[ticker], ticker),
+        )
+        conn.execute(
+            "INSERT INTO holdings VALUES ('acc1', ?, 'HERTZ', ?, 100, 10, 'SH', '')",
+            (CUSIP[ticker], title),
+        )
+    conn.execute(
+        "INSERT INTO total_scores VALUES (DATE '2024-03-31', ?, 'HTZWW', 1.0, 1.0, 1.0, 1.0, 0.41)",
+        (CUSIP["HTZWW"],),
+    )
+    _add_quarter(conn, Q2, {"HTZ": 0.30, "HTZWW": 0.41})
+    s = ScoreTopK(top_k=10)
+    assert {"HTZ", "HTZWW"} & set(s.get_target_positions(date(2024, 6, 1), conn)) == {"HTZWW"}
+    assert {"HTZ", "HTZWW"} & set(s.get_target_positions(date(2024, 9, 1), conn)) == {"HTZ"}
 
 
 def _add_hertz(conn):

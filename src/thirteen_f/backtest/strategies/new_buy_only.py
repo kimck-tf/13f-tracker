@@ -7,6 +7,8 @@ from datetime import date
 import duckdb
 
 from thirteen_f.backtest.strategy import (
+    ISSUER_CLASS_CANDIDATES_SQL,
+    ISSUER_CLASS_ORDER_SQL,
     NON_COMMON_CUSIPS_SQL,
     Strategy,
     latest_public_period,
@@ -39,36 +41,35 @@ class NewBuyOnly(Strategy):
         rows = conn.execute(
             f"""
             WITH cand AS (
-                SELECT c.ticker, t.total_score, c.new_buy_count,
-                       SUBSTR(c.cusip, 1, 6) AS issuer, nc.cusip IS NOT NULL AS non_common
-                FROM consensus_quarterly c
-                JOIN total_scores t
-                  ON t.period_of_report = c.period_of_report AND t.cusip = c.cusip
-                LEFT JOIN cusip_ticker_map m ON m.cusip = c.cusip
-                LEFT JOIN ({NON_COMMON_CUSIPS_SQL}) nc ON nc.cusip = c.cusip
-                WHERE c.period_of_report = ?
-                  AND c.ticker IS NOT NULL
-                  AND COALESCE(m.is_etf, FALSE) = FALSE
+                SELECT t.ticker, t.total_score, t.held_since, t.score_then, c.new_buy_count,
+                       SUBSTR(t.cusip, 1, 6) AS issuer, nc.cusip IS NOT NULL AS non_common
+                FROM ({ISSUER_CLASS_CANDIDATES_SQL}) t
+                JOIN consensus_quarterly c
+                  ON c.period_of_report = t.period_of_report AND c.cusip = t.cusip
+                LEFT JOIN ({NON_COMMON_CUSIPS_SQL}) nc ON nc.cusip = t.cusip
             ),
             one_per_issuer AS (
-                -- 발행사(CUSIP 앞 6자리)당 한 클래스: 보통주 먼저(워런트·권리는 뒤로),
-                -- 그다음 total_score.
-                -- 신규 매수 거장 수는 클래스 중 최대값으로 본다
-                SELECT ticker, total_score,
+                -- 발행사(CUSIP 앞 6자리)당 한 클래스 (ISSUER_CLASS_ORDER_SQL). 순위에 쓰는 점수는
+                -- 대표 클래스와 무관하게 보통주 클래스 중 최고 total_score, 신규 매수 거장 수는
+                -- 클래스 중 최대값으로 본다
+                SELECT ticker,
+                       FIRST_VALUE(total_score) OVER (
+                           PARTITION BY issuer
+                           ORDER BY non_common, total_score DESC NULLS LAST, ticker
+                       ) AS issuer_score,
                        MAX(new_buy_count) OVER (PARTITION BY issuer) AS issuer_new_buys
                 FROM cand
                 QUALIFY ROW_NUMBER() OVER (
-                    PARTITION BY issuer
-                    ORDER BY non_common, total_score DESC NULLS LAST, ticker
+                    PARTITION BY issuer ORDER BY {ISSUER_CLASS_ORDER_SQL}
                 ) = 1
             )
             SELECT ticker
             FROM one_per_issuer
             WHERE issuer_new_buys >= ?
-            ORDER BY total_score DESC NULLS LAST
+            ORDER BY issuer_score DESC NULLS LAST
             LIMIT ?
             """,
-            (latest_period, self.min_holders, self.top_k),
+            (latest_period, latest_period, self.min_holders, self.top_k),
         ).fetchall()
         if not rows or len(rows) < self.min_positions:
             return {}
