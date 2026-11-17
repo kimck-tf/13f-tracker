@@ -154,7 +154,7 @@ function PlanScreen({ route }) {
               <li><span className="plan-warn">가격이 {data.staleDays}일 넘게 없어 목록에서 뺀 종목: {dropped.join(", ")}</span> — 상장폐지·인수 가능성이 있습니다. 백테스트도 같은 규칙으로 빼고 남은 종목에 비중을 나눕니다.</li>
             )}
             <li>목록은 그 분기 13F를 추적 매니저 전원이 제출한 날(보통 2·5·8·11월 중순)에만 바뀝니다. 그 사이에는 매매할 일이 없고, 교체 시 <b>SELL 목록 매도 → BUY 목록 매수 → 전 종목 동일 비중</b>으로 맞춥니다.</li>
-            <li>백테스트는 2024-05 이후 분기 신호 10번짜리 표본이고 편도 10bp 비용만 가정했습니다(슬리피지·세금 없음). 표의 수치를 기대 수익으로 읽지 마세요. 2026-11 재스윕에서 ConsensusTopK(3,10)은 Calmar 1.71로 이웃 설정(0.96~1.40)보다 유독 높아 <span className="plan-warn">과적합 신호(고원이 아닌 봉우리)</span>로 판정했고, 2026-11-17에 기본값을 (3,15)로 바꿨습니다. Ensemble은 재스윕에서 평가한 조합 그대로라 절반이 여전히 (3,10)입니다. 근거와 한계는 <span className="mono">docs/backtest-resweep-2026-11.md</span>.</li>
+            <li>백테스트는 2024-05 이후 분기 신호 10번짜리 표본이고 편도 10bp 비용만 가정했습니다(슬리피지·세금 없음). 표의 수치를 기대 수익으로 읽지 마세요. 2026-11 재스윕에서 ConsensusTopK(3,10)은 Calmar 1.71로 이웃 설정(0.96~1.40)보다 유독 높아 <span className="plan-warn">과적합 신호(고원이 아닌 봉우리)</span>로 판정했습니다. 근거와 한계는 <span className="mono">docs/backtest-resweep-2026-11.md</span>.</li>
             <li>같은 목록을 터미널에서 보려면 <span className="mono">uv run thirteen-f targets --strategy {selected.type}</span>.</li>
           </ul>
         </Section>

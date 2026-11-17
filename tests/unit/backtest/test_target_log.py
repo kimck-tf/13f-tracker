@@ -16,7 +16,7 @@ AS_OF = date(2024, 6, 1)
 
 @pytest.fixture
 def conn(tmp_path):
-    """매니저 3명이 2024Q1 13F를 05-15에 모두 제출. ConsensusTopK(3,15) 목표 = AAA·BBB
+    """매니저 3명이 2024Q1 13F를 05-15에 모두 제출. ConsensusTopK(3,10) 목표 = AAA·BBB
     (CCC는 보유자 1명)."""
     db = tmp_path / "t.duckdb"
     init_db(db)
@@ -47,7 +47,7 @@ def conn(tmp_path):
     c.close()
 
 
-def _log(conn, name="ConsensusTopK(3,15)"):
+def _log(conn, name="ConsensusTopK(3,10)"):
     rows = conn.execute(
         "SELECT as_of, period_of_report, targets_json FROM target_log "
         "WHERE strategy_name = ? ORDER BY recorded_at",
@@ -115,7 +115,7 @@ def test_changed_target_is_appended_and_the_earlier_record_stays(conn):
     줄에만 남는다."""
     record_targets(conn, AS_OF)
     conn.execute("UPDATE consensus_quarterly SET holder_count = 3 WHERE ticker = 'CCC'")
-    assert record_targets(conn, date(2024, 6, 2)) == ["ConsensusTopK(3,15)", (
+    assert record_targets(conn, date(2024, 6, 2)) == ["ConsensusTopK(3,10)", (
         "Ensemble(ConsensusTopK(3,10):0.5,ConsensusTopK(2,15):0.5)"
     )]
     third = pytest.approx(1 / 3, abs=1e-6)

@@ -16,7 +16,6 @@
   - 2026-09: 추적 대상은 14명이다(§1.2·§4.1). Klarman·Einhorn·Pabrai의 CIK가 다른 엔터티(Lone Pine Capital, Greenlight Capital Re, 개인 CIK)를 가리키던 것을 Baupost·DME Capital Management·Dalal Street로 바로잡았다. Ackman은 `managers.yaml`의 `extra_ciks`로 Pershing Square Inc. 보고분을 합산한다. Greenblatt(Gotham, 1,791종목)은 추종 가능한 확신 포트폴리오가 아니고 컨센서스 신호를 희석해 제외했다.
   - 2026-09 백테스트 비교 공정성: 벤치마크 NAV를 전략의 첫 매수 전에도 매일 갱신한다(§7.3 — 이전엔 전략마다 `bench_cagr`가 달랐다). 집계형 전략(ScoreTopK·ConsensusTopK·NewBuyOnly)은 분기 13F-HR이 모두 제출된 뒤에만 그 분기를 쓴다(§7.4). `NewBuyOnly`에 `min_positions`(후보가 그보다 적으면 현금)를 추가했다(§7.2) — 신규매수 후보가 분기당 1~8종목이라 단일 종목 100% 분기가 있었다. 파라미터 비교는 `scripts/sweep_backtests.py`(DB 사본)로 한다.
   - 2026-09-20 기본 suite 파라미터를 탐색 결과(`docs/backtest-optimization-2026-09.md`, Calmar 기준·평균 보유 8종목 이상)의 계열별 최적값으로 바꿨다(§7.2·§7.6): ConsensusTopK(3,10)·ScoreTopK(40)·ConvictionFollow(3)·MultiManager(Burry·Dalio·Druckenmiller·Tepper, 20)·Ensemble(ConsensusTopK(3,10) 0.5 + ConsensusTopK(2,15) 0.5). 1위는 ConsensusTopK(3,10)(2024-05-13~2026-09-14 CAGR 35.3%, MDD 15.9%, Calmar 2.22).
-  - 2026-11-17 기본 suite를 두 군데 바꿨다(§7.6). ConsensusTopK는 (3,10)에서 (3,15)로 — 엔진 버그를 고친 뒤의 재스윕(`docs/backtest-resweep-2026-11.md`)에서 (3,10)이 이웃 설정보다 유독 높은 봉우리로 판정됐다. MultiManager는 13F를 그만 낸 Burry를 빼 Dalio·Druckenmiller·Tepper 3명이다. Ensemble의 다리는 그대로다. 같은 날의 규칙 보완(자기 회사 지분 제외, 오래된 13F 제외, 대표 클래스 유지, 평가 구간, `target_log`)은 `CLAUDE.md` Invariants와 `_claude_docs/ARCHITECTURE.md`에 적었다.
 
 ---
 

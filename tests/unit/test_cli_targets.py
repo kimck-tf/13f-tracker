@@ -62,7 +62,7 @@ def test_targets_prints_ticker_and_weight_for_registry_strategy() -> None:
     assert "AAA" in result.output and "BBB" in result.output
     assert "CCC" not in result.output
     assert "50.0%" in result.output
-    assert "ConsensusTopK(3,15)" in result.output
+    assert "ConsensusTopK(3,10)" in result.output
 
 
 def test_targets_accepts_parametrized_strategy_name() -> None:
@@ -100,13 +100,13 @@ def test_record_targets_logs_todays_targets_once(db: Path) -> None:
     않는다."""
     first = CliRunner().invoke(app, ["record-targets"])
     assert first.exit_code == 0, first.output
-    assert "8개 전략" in first.output and "ConsensusTopK(3,15)" in first.output
+    assert "8개 전략" in first.output and "ConsensusTopK(3,10)" in first.output
     second = CliRunner().invoke(app, ["record-targets"])
     assert second.exit_code == 0, second.output
     assert "바뀐 전략 없음" in second.output
     c = duckdb.connect(str(db), read_only=True)
     rows = c.execute(
-        "SELECT as_of, targets_json FROM target_log WHERE strategy_name = 'ConsensusTopK(3,15)'"
+        "SELECT as_of, targets_json FROM target_log WHERE strategy_name = 'ConsensusTopK(3,10)'"
     ).fetchall()
     c.close()
     assert rows == [(date.today(), '{"AAA": 0.5, "BBB": 0.5}')]
