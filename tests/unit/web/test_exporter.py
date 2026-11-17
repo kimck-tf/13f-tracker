@@ -380,12 +380,12 @@ def test_export_backtest_marks_runs_of_the_default_suite(conn, tmp_path: Path):
         "INSERT INTO backtest_runs (run_id, strategy_name, params_json, start_date, end_date, "
         "benchmark, cost_bps, created_at) VALUES (?, ?, '{}', DATE '2024-01-02', "
         "DATE '2024-12-31', 'SPY', 10.0, NOW())",
-        [("r1", "ConsensusTopK(3,10)"), ("r2", "SingleManagerClone(Ackman)")],
+        [("r1", "ConsensusTopK(3,15)"), ("r2", "SingleManagerClone(Ackman)")],
     )
     export_backtest(conn, tmp_path)
     data = json.loads((tmp_path / "backtest.json").read_text(encoding="utf-8"))
     assert {r["name"]: r["inSuite"] for r in data} == {
-        "ConsensusTopK(3,10)": True,
+        "ConsensusTopK(3,15)": True,
         "SingleManagerClone(Ackman)": False,
     }
     # 곡선이 없는 run은 구간도 없다

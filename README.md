@@ -100,7 +100,7 @@ print(c.execute('''
 
 - [x] 백테스트 최적화 (2026-09-20) — 벤치마크 NAV 갱신·집계형 lookahead 규칙·NewBuyOnly `min_positions` 수정 후 79개 설정 탐색(`scripts/sweep_backtests.py`, DB 사본). Calmar 기준 1위 ConsensusTopK(3,10)을 비롯한 계열별 최적값을 기본 스위트에 반영. 보고서 `docs/backtest-optimization-2026-09.md`. `thirteen-f targets` 명령과 SPA **Plan** 탭(비교표 → 권장 전략 → 지금의 목표 비중·매수/매도 목록, `targets.json`) 추가
 
-- [x] 2026Q3 반영·규칙 보완·재스윕 (2026-11-17) — 13명의 2026Q3 13F 수집 (151 filings / 14,441 holdings / 1,864 price tickers, 가격 2026-11-16까지). 규칙 보완: 매니저 자신의 회사 지분 제외(`config/scoring.toml [affiliated_holdings]`), 2분기 이상 뒤처진 13F 제외, 발행사 대표 클래스 유지, 백테스트 시작일을 첫 13F 공개일로, SPY의 최대 낙폭·Sharpe 저장·표시, 그때그때의 목표를 쌓는 `target_log`(`thirteen-f record-targets`). 79개 설정 재스윕과 판정은 `docs/backtest-resweep-2026-11.md` — ConsensusTopK(3,10)은 Calmar 1위지만 이웃 설정보다 유독 높은 봉우리로 판정했고, 기본 스위트를 바꿀지는 아직 정하지 않았다
+- [x] 2026Q3 반영·규칙 보완·재스윕 (2026-11-17) — 13명의 2026Q3 13F 수집 (151 filings / 14,441 holdings / 1,864 price tickers, 가격 2026-11-16까지). 규칙 보완: 매니저 자신의 회사 지분 제외(`config/scoring.toml [affiliated_holdings]`), 2분기 이상 뒤처진 13F 제외, 발행사 대표 클래스 유지, 백테스트 시작일을 첫 13F 공개일로, SPY의 최대 낙폭·Sharpe 저장·표시, 그때그때의 목표를 쌓는 `target_log`(`thirteen-f record-targets`). 79개 설정 재스윕과 판정은 `docs/backtest-resweep-2026-11.md` — ConsensusTopK(3,10)은 Calmar 1위지만 이웃 설정보다 유독 높은 봉우리로 판정했고, 같은 날 기본 스위트의 ConsensusTopK를 기준을 통과한 (3,15)로 바꿨다
 
 **unit 303 passed · integration 3 passed + 1 skipped** (2026-11-17) (collect e2e는 로컬 VCR 카세트를 `RECORD_VCR=1`로 녹화해야 실행). (Frontend SPA는 단위 테스트 X — `thirteen-f serve` 후 브라우저 navigate 검증; LLM은 httpx mock + structured JSON schema 검증; Quarto는 사용자 CLI 설치 후 검증)
 
@@ -108,7 +108,7 @@ print(c.execute('''
 
 ## Backtest Snapshot (2024-05-13 ~ 2026-11-16, cost_bps=10, 2026-11-17 실행)
 
-기본 8전략의 최신 run이다. 구간은 첫 13F 공개일(2024-05-13)부터 가격 마지막 날(2026-11-16)까지 631영업일이고, SPY도 같은 구간의 값이다. 파라미터는 2026-09 탐색(`docs/backtest-optimization-2026-09.md`)에서 고른 값 그대로이며 MultiManager만 13F를 그만 낸 Burry를 뺐다.
+기본 8전략의 최신 run이다. 구간은 첫 13F 공개일(2024-05-13)부터 가격 마지막 날(2026-11-16)까지 631영업일이고, SPY도 같은 구간의 값이다. 파라미터는 2026-09 탐색(`docs/backtest-optimization-2026-09.md`)에서 고른 값이고 두 가지만 다르다. ConsensusTopK는 2026-11 재스윕 판정에 따라 (3,10)에서 (3,15)로 바꿨고, MultiManager는 13F를 그만 낸 Burry를 뺐다.
 
 > 2026-09-20 스냅샷(2024-01-02 ~ 2026-09-14, ConsensusTopK(3,10) CAGR 29.93% 등)은 엔진이 다시 산 종목에 보유하지 않은 기간의 수익을 붙이던 버그(2026-10-31 수정)가 들어간 값이라 이 표로 바꿨다. 옛 표는 git 이력에, 그때의 탐색은 `docs/backtest-optimization-2026-09.md`에 남아 있다.
 
@@ -116,15 +116,15 @@ print(c.execute('''
 |---|--:|--:|--:|--:|--:|
 | SingleManagerClone(Buffett) | 17.08% | 20.50% | 1.06 | 0.83 | +0.69%p |
 | SingleManagerClone(Druckenmiller) | 25.33% | 26.12% | 1.05 | 0.97 | +8.94%p |
-| **ConsensusTopK(3, 10)** — Calmar 1위 | **25.29%** | **14.83%** | 1.38 | **1.71** | +8.90%p |
+| ConsensusTopK(3, 15) | 23.31% | 16.60% | 1.33 | 1.40 | +6.91%p |
 | ScoreTopK(40) | 20.76% | 19.02% | 1.22 | 1.09 | +4.36%p |
 | ConvictionFollow(3) | 21.10% | 18.39% | 1.24 | 1.15 | +4.71%p |
 | NewBuyOnly(2, 15) | 3.86% | 31.79% | 0.28 | 0.12 | −12.53%p |
-| Ensemble(ConsensusTopK(3,10) 0.5 / ConsensusTopK(2,15) 0.5) | 21.34% | 14.93% | 1.25 | 1.43 | +4.95%p |
+| Ensemble(ConsensusTopK(3,10) 0.5 / ConsensusTopK(2,15) 0.5) — Calmar 1위 | 21.34% | 14.93% | 1.25 | 1.43 | +4.95%p |
 | MultiManager(Dalio·Druckenmiller·Tepper, 20) | 16.93% | 25.56% | 0.74 | 0.66 | +0.53%p |
 | SPY (벤치마크) | 16.39% | 18.76% | 1.02 | 0.87 | – |
 
-2026-11 재스윕(`docs/backtest-resweep-2026-11.md`, 79개 설정)에서 ConsensusTopK(3,10)은 Calmar 1위였지만 이웃 설정(0.96~1.40)보다 유독 높아, 고원이 아니라 봉우리(과적합 신호)로 판정했다. 79개 설정의 중앙값은 CAGR 15.94%로 SPY보다 낮다. 표의 수치를 기대 수익으로 읽지 않는다.
+2026-11 재스윕(`docs/backtest-resweep-2026-11.md`, 79개 설정)에서 그때의 기본값 ConsensusTopK(3,10)은 Calmar 1위(같은 구간 CAGR 25.29%, MDD 14.83%, Calmar 1.71)였지만 이웃 설정(0.96~1.40)보다 유독 높아, 고원이 아니라 봉우리(과적합 신호)로 판정했다. 그래서 2026-11-17에 기본값을 같은 계열에서 기준을 통과한 (3,15)로 바꿨다. Ensemble은 재스윕에서 평가한 조합 그대로라 절반이 여전히 (3,10)이다. Calmar가 1.43으로 (3,15)의 1.40보다 조금 높아, Plan 화면의 권장 표시(최신 run 중 Calmar 1위)는 지금 Ensemble에 붙는다. 79개 설정의 중앙값은 CAGR 15.94%로 SPY보다 낮다. 표의 수치를 기대 수익으로 읽지 않는다.
 
 ### ⚠️ 해석 주의사항
 
@@ -134,7 +134,7 @@ print(c.execute('''
 2. **`NewBuyOnly`는 추천하지 않는다** — 2명 이상 신규매수 후보가 분기당 1~8종목뿐이라 NVDA 100%(2025-07), AER 100%(2026-04) 같은 단일 종목 분기가 있고, 성과가 종목 두세 개에 달려 있다(지금 CAGR 3.86%·MDD 31.79%, 재스윕 12칸의 Calmar가 모두 SPY 아래). 화면 비교용으로만 남겼다. 편도 10bp 거래비용 가정은 어느 전략이든 단순하고 slippage·세금·차입 제한 미반영.
 
 3. **백테스트는 첫 13F 공개일(2024-05-13)부터 계산한다**
-   SPY 가격은 2024-01-02부터 있지만 첫 13F(2024Q1)가 05-13에 공개돼 그 전까지는 모든 전략이 현금이다. 그 구간을 넣으면 전략의 CAGR만 낮아지고 SPY는 그대로라 비교가 어긋나므로(ConsensusTopK(3,10) 21.8% 대 SPY 18.3% ↔ 25.3% 대 16.4%), 2026-11-17부터 `backtest`의 시작일 기본값을 첫 공개일로 두었다 (`--start`로 바꿀 수 있다). 약 2년 반짜리 short-cycle 검증이지 long-cycle 검증이 아니다. 파라미터는 이 표본 안에서 고른 값이라 실제 기대 성과는 표보다 낮게 봐야 한다.
+   SPY 가격은 2024-01-02부터 있지만 첫 13F(2024Q1)가 05-13에 공개돼 그 전까지는 모든 전략이 현금이다. 그 구간을 넣으면 전략의 CAGR만 낮아지고 SPY는 그대로라 비교가 어긋나므로(그때의 기본값 ConsensusTopK(3,10) 기준 21.8% 대 SPY 18.3% ↔ 25.3% 대 16.4%), 2026-11-17부터 `backtest`의 시작일 기본값을 첫 공개일로 두었다 (`--start`로 바꿀 수 있다). 약 2년 반짜리 short-cycle 검증이지 long-cycle 검증이 아니다. 파라미터는 이 표본 안에서 고른 값이라 실제 기대 성과는 표보다 낮게 봐야 한다.
 
 4. **Buffett vs Druckenmiller 복제** — 두 복제 모두 첫 13F가 보이는 2024-05-15부터 투자한다. Druckenmiller 복제(2026-11-16까지 누적 +76%)는 Natera(비중 13~18%)·Insmed·Teva 같은 소수 고확신 종목이 성과를 주도했고, 2025-04 관세 충격 때 하루 −7.7%·+12.9%로 변동도 크다. 복제는 콜옵션을 기초자산 명목금액의 롱 노출로 계산하고(분기별 비중 2.6~16.4%) 풋은 제외하므로, 레버리지·프리미엄이 있는 실제 포지션과 다르다. Duquesne이 금액을 천 달러 단위로 보고한 필링은 collect 단계에서 ×1000 보정된다 (제출물 안의 상대 비중만 쓰는 복제 수익률은 보정 전에도 영향이 없었다).
 

@@ -17,7 +17,7 @@ from thirteen_f.web.exporter import _next_rebalance, export_targets
 def conn(tmp_path: Path):
     """매니저 3명, 2024Q1(05-15 공개)·2024Q2(08-14 공개) 두 분기.
 
-    ConsensusTopK(3,10) 기준: Q1 = {AAA, CCC}, Q2 = {AAA, BBB} → AAA 유지, BBB 신규, CCC 매도.
+    ConsensusTopK(3,15) 기준: Q1 = {AAA, CCC}, Q2 = {AAA, BBB} → AAA 유지, BBB 신규, CCC 매도.
     """
     db = tmp_path / "t.duckdb"
     init_db(db)
@@ -76,7 +76,7 @@ def test_export_targets_covers_default_suite_with_period_and_dates(conn, tmp_pat
     data = _load(tmp_path)
     assert data["as_of"] == "2024-09-01"
     assert [s["name"] for s in data["strategies"]] == [s.name for s in default_suite()]
-    cons = _by_name(data, "ConsensusTopK(3,10)")
+    cons = _by_name(data, "ConsensusTopK(3,15)")
     assert cons["type"] == "ConsensusTopK"
     assert cons["period"] == "2024-06-30"
     assert cons["public_since"] == "2024-08-14"
@@ -86,7 +86,7 @@ def test_export_targets_covers_default_suite_with_period_and_dates(conn, tmp_pat
 
 def test_export_targets_marks_buy_keep_and_sell_against_previous_list(conn, tmp_path: Path):
     export_targets(conn, tmp_path, as_of=date(2024, 9, 1))
-    cons = _by_name(_load(tmp_path), "ConsensusTopK(3,10)")
+    cons = _by_name(_load(tmp_path), "ConsensusTopK(3,15)")
     actions = {p["ticker"]: p["action"] for p in cons["positions"]}
     assert actions == {"AAA": "keep", "BBB": "buy"}
     assert [s["ticker"] for s in cons["sells"]] == ["CCC"]
@@ -114,9 +114,9 @@ def test_export_targets_flags_etf_positions(conn, tmp_path: Path):
 def test_export_targets_recommends_best_calmar_with_enough_positions(conn, tmp_path: Path):
     """권장 = 기본 suite 최신 run 중 Calmar 1위, 단 평균 보유 8종목 이상 (몰빵 설정 제외)."""
     for run_id, name, calmar, n_pos in [
-        ("r1", "ConsensusTopK(3,10)", 2.0, 10),
+        ("r1", "ConsensusTopK(3,15)", 2.0, 10),
         ("r2", "ScoreTopK(40)", 3.0, 5),          # Calmar는 높지만 5종목 → 제외
-        ("r0", "ConsensusTopK(3,10)", 9.0, 10),   # 오래된 run — 최신 run(r1)만 본다
+        ("r0", "ConsensusTopK(3,15)", 9.0, 10),   # 오래된 run — 최신 run(r1)만 본다
     ]:
         conn.execute(
             "INSERT INTO backtest_runs VALUES (?, ?, '{}', DATE '2024-01-02', DATE '2024-12-31', "
@@ -138,8 +138,8 @@ def test_export_targets_recommends_best_calmar_with_enough_positions(conn, tmp_p
     )
     export_targets(conn, tmp_path, as_of=date(2024, 9, 1))
     data = _load(tmp_path)
-    assert data["recommended"] == "ConsensusTopK(3,10)"
-    cons = _by_name(data, "ConsensusTopK(3,10)")
+    assert data["recommended"] == "ConsensusTopK(3,15)"
+    cons = _by_name(data, "ConsensusTopK(3,15)")
     assert cons["metrics"]["calmar"] == pytest.approx(2.0)
     assert cons["metrics"]["avgPositions"] == pytest.approx(10.0)
     # 같은 구간의 SPY 지표와 그 구간(곡선의 첫날·마지막 날)을 함께 낸다
@@ -156,7 +156,7 @@ def test_export_targets_without_runs_has_no_recommendation(conn, tmp_path: Path)
 
 def test_export_targets_before_any_filing_is_all_cash(conn, tmp_path: Path):
     export_targets(conn, tmp_path, as_of=date(2024, 5, 1))
-    cons = _by_name(_load(tmp_path), "ConsensusTopK(3,10)")
+    cons = _by_name(_load(tmp_path), "ConsensusTopK(3,15)")
     assert cons["positions"] == [] and cons["sells"] == []
     assert cons["period"] is None and cons["next_rebalance"] is None
 
@@ -179,7 +179,7 @@ def test_export_targets_flags_stale_prices_relative_to_market_last_date(conn, tm
     export_targets(conn, tmp_path, as_of=date(2024, 10, 15))
     data = _load(tmp_path)
     assert data["staleDays"] == 10
-    cons = _by_name(data, "ConsensusTopK(3,10)")
+    cons = _by_name(data, "ConsensusTopK(3,15)")
     stale = {p["ticker"]: p["priceStale"] for p in cons["positions"]}
     assert stale == {"AAA": False, "BBB": False}
     assert cons["sells"][0]["ticker"] == "CCC" and cons["sells"][0]["priceStale"] is True
@@ -196,6 +196,6 @@ def test_export_targets_drops_stale_tickers_like_the_backtest(conn, tmp_path: Pa
         "VALUES ('BBB', DATE '2024-07-01', 5, 5)"
     )
     export_targets(conn, tmp_path, as_of=date(2024, 9, 1))
-    cons = _by_name(_load(tmp_path), "ConsensusTopK(3,10)")
+    cons = _by_name(_load(tmp_path), "ConsensusTopK(3,15)")
     assert [(p["ticker"], p["weight"]) for p in cons["positions"]] == [("AAA", pytest.approx(1.0))]
     assert cons["dropped"] == ["BBB"]

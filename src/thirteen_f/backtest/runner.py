@@ -24,6 +24,9 @@ def default_suite() -> list:
 
     파라미터는 2026-09 탐색(docs/backtest-optimization-2026-09.md)의 계열별 최적값 — Calmar 기준,
     평균 보유 8종목 이상. SPA가 type당 최신 run 하나만 보여 주므로 type당 1개만 둔다.
+    ConsensusTopK는 2026-11 재스윕(docs/backtest-resweep-2026-11.md)에서 (3,10)이 이웃 설정보다
+    유독 높은 봉우리로 판정돼 (3,15)로 바꿨다 (2026-11-17). Ensemble의 다리는 재스윕에서 평가한
+    조합 그대로 두었다 — 평가하지 않은 조합으로 갈아 끼우지 않는다.
     NewBuyOnly는 후보 풀이 작아 추천하지 않지만 화면 비교용으로 유지한다.
     MultiManager는 탐색 때의 macro 4명에서 Burry를 뺐다 — 2025Q3이 마지막 13F이고, 금액이 작아
     그가 상위 20종목을 바꾼 날도 없었다 (2026-11-17).
@@ -31,7 +34,7 @@ def default_suite() -> list:
     return [
         SingleManagerClone(label="Buffett"),
         SingleManagerClone(label="Druckenmiller"),
-        ConsensusTopK(min_holders=3, top_k=10),
+        ConsensusTopK(min_holders=3, top_k=15),
         ScoreTopK(top_k=40),
         ConvictionFollow(top_k=3),
         NewBuyOnly(min_holders=2, top_k=15),
